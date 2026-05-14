@@ -1,24 +1,25 @@
-# AI Model Entegrasyonu Tamamlandı! 🎉
+# Smart Wardrobe AI Entegrasyonu 🎉
+
+Bu repo artık kılavuza uygun şekilde **Wardrobe (dolap)** ve **Recommendations (kombin öneri)** akışıyla çalışır.
 
 ## Yapılan İşlemler
 
-### 1. ✅ Backend Servisi (Python Flask)
-- **Konum:** `backend/` klasörü
+### 1) ✅ Backend (Python Flask)
+- **Konum:** `backend/`
 - **Özellikler:**
-  - ResNet ile kıyafet sınıflandırma
-  - YOLO ile kıyafet tespiti
-  - Kombin analizi (YOLO + ResNet birlikte)
-  - 3 farklı API endpoint
+  - Wardrobe item ekleme (fotoğraf yükle + analiz + DB’ye kaydet)
+  - Wardrobe listeleme/güncelleme/silme
+  - Re-analyze (mevcut item’ı yeniden analiz)
+  - Recommendations (hava durumu / event / mood / gender / outerwear_required)
+  - Upload edilen görselleri servis etme (`/uploads/*`)
+  - Geriye dönük uyumluluk: legacy `/api/analyze`
 
-### 2. ✅ Flutter Servisleri
-- **AIService:** Backend ile iletişim kuran servis
-- **AI Models:** Veri modelleri (ClothingItem, Detection, AnalyzedItem)
-- **AddClothingScreen:** Kamera/galeri ile fotoğraf çekip AI analizi yapan ekran
-
-### 3. ✅ UI Entegrasyonu
-- Home screen'deki kamera butonu artık AddClothingScreen'e yönlendiriyor
-- Kullanıcı kamera veya galeriden fotoğraf seçebilir
-- AI analizi yapılarak sonuçlar gösteriliyor
+### 2) ✅ Flutter
+- `AIService`: `/wardrobe/*` ve `/recommendations` endpoint’lerini kullanır
+- Ekranlar:
+  - **Wardrobe**: grid + edit/delete/reanalyze + pull-to-refresh
+  - **Recommend**: context seçimleri + results ekranı
+  - **Add to Wardrobe**: kamera/galeri seç + analyze&save
 
 ---
 
@@ -42,13 +43,26 @@ venv\Scripts\activate  # Windows
 pip install -r requirements.txt
 ```
 
-4. **Model dosyalarınızı koyun:**
-   - `backend/models/resnet_model.pth` - ResNet modeliniz
-   - `backend/models/yolo_model.pt` - YOLO modeliniz
+4. **Model dosyalarını kontrol edin:**
+  - `backend/models/yolo_model.pt`
+  - `backend/models/resnet_model.pth` (opsiyonel; yüklenemezse backend heuristik ile devam eder)
 
 5. **Backend'i çalıştırın:**
 ```bash
 python app.py
+```
+
+Port 5000 başka bir process tarafından kullanılıyorsa (Windows'ta bazen eski Flask instance'ları portu tutabiliyor), portu override edebilirsiniz:
+
+```bash
+set PORT=5001
+python app.py
+```
+
+Ve Flutter'ı bu backend'e bağlamak için:
+
+```bash
+flutter run --dart-define=BACKEND_URL=http://10.0.2.2:5001
 ```
 
 Backend `http://localhost:5000` adresinde çalışmaya başlayacak.
@@ -61,6 +75,9 @@ Backend `http://localhost:5000` adresinde çalışmaya başlayacak.
 - Zaten yapılandırıldı, değişiklik gerekmez.
 - Backend URL: `http://10.0.2.2:5000`
 
+**Windows/macOS/Linux (Flutter Desktop) Çalıştırıyorsanız:**
+- Backend URL otomatik olarak `http://127.0.0.1:5000` kullanır.
+
 **Gerçek Cihazda Çalıştırıyorsanız:**
 
 1. Bilgisayarınızın local IP adresini öğrenin:
@@ -68,13 +85,9 @@ Backend `http://localhost:5000` adresinde çalışmaya başlayacak.
 ipconfig  # Windows
 ```
 
-2. `lib/data/services/ai_service.dart` dosyasını açın:
-```dart
-// Bu satırı yoruma alın:
-// static const String baseUrl = 'http://10.0.2.2:5000';
-
-// Bu satırı aktif edin ve IP'nizi yazın:
-static const String baseUrl = 'http://192.168.1.XXX:5000';
+2. Backend URL'i override edin (önerilen):
+```bash
+flutter run --dart-define=BACKEND_URL=http://192.168.1.XXX:5000
 ```
 
 3. Uygulamayı çalıştırın:
@@ -86,41 +99,46 @@ flutter run
 
 ## 📱 Kullanım
 
-1. **Giriş yapın** (Login screen'de herhangi bir email ve 6 haneli şifre)
-2. **Ana ekranda** ortadaki mor **kamera butonuna** tıklayın
-3. **Kamera** ile çekin veya **Galeri**'den fotoğraf seçin
-4. **"AI ile Analiz Et"** butonuna tıklayın
-5. Sonuçlar ekranda gösterilecek:
-   - Kaç kıyafet tespit edildi
-   - Her kıyafetin kategorisi
-   - YOLO ve ResNet güven skorları
+1. Alt menüden **Recommend** veya **Wardrobe** sekmesini seçin.
+2. Ortadaki **kamera** butonu ile **Add to Wardrobe** ekranına gidin.
+3. Fotoğraf seçin → **Analyze & Save**.
+4. Wardrobe sekmesinde eklenen item’ı görürsünüz.
+5. Recommend sekmesinde context seçip **Recommend** ile 3 kombin alın.
 
 ---
 
 ## 🔧 API Endpoints
 
-### 1. Health Check
-```
-GET http://localhost:5000/health
+### Health
+`GET /health`
+
+### Wardrobe
+- `POST /wardrobe/items` (multipart: `image`, optional `forced_main_category`)
+- `GET /wardrobe/items`
+- `PATCH /wardrobe/items/<id>` (json: `main_category`, `sub_category`, `manual_override`)
+- `DELETE /wardrobe/items/<id>`
+- `POST /wardrobe/items/<id>/reanalyze` (optional query: `forced_main_category`)
+
+### Recommendations
+`POST /recommendations`
+
+Body örneği:
+```json
+{
+  "weather": "mild",
+  "event": "casual",
+  "mood": "relaxed",
+  "gender": "no preference",
+  "outerwear_required": false,
+  "anchor_item_id": null
+}
 ```
 
-### 2. Kıyafet Sınıflandırma (ResNet)
-```
-POST http://localhost:5000/api/classify
-Body: multipart/form-data (image)
-```
+### Uploads
+`GET /uploads/<filename>`
 
-### 3. Kıyafet Tespiti (YOLO)
-```
-POST http://localhost:5000/api/detect
-Body: multipart/form-data (image)
-```
-
-### 4. Kombin Analizi (YOLO + ResNet)
-```
-POST http://localhost:5000/api/analyze
-Body: multipart/form-data (image)
-```
+### Legacy (geri uyumluluk)
+`POST /api/analyze` (multipart: `image`) — analiz yapar ama DB’ye kaydetmez
 
 ---
 
@@ -148,11 +166,10 @@ curl http://localhost:5000/health
 - IP adresinin doğru olduğunu kontrol edin
 - Firewall'un 5000 portunu engellemediğini kontrol edin
 
-### "Model not loaded" hatası:
-- Model dosyalarının `backend/models/` klasöründe olduğunu kontrol edin
-- Dosya isimlerinin doğru olduğunu kontrol edin:
-  - `resnet_model.pth`
-  - `yolo_model.pt`
+### "Model not loaded" / düşük doğruluk:
+- `yolo_model.pt` doğru yerde mi kontrol edin
+- `resnet_model.pth` yüklenemiyorsa backend heuristik ile devam eder (kategori yine döner)
+- YOLO hiç tespit etmiyorsa `YOLO_CONF` değerini düşürmeyi deneyin
 
 ### Kamera açılmıyor:
 - Android: `AndroidManifest.xml`'de kamera izni var mı kontrol edin
@@ -162,10 +179,9 @@ curl http://localhost:5000/health
 
 ## 📝 Notlar
 
-- Backend servisi CPU'da çalışacak şekilde ayarlanmıştır
-- GPU kullanmak için `app.py`'daki `map_location` parametresini değiştirin
-- Model sınıfları ve kategorileri kendi modellerinize göre güncelleyin
-- Timeout sürelerini ihtiyacınıza göre ayarlayabilirsiniz
+- Backend varsayılan olarak CPU’da çalışır.
+- Android emülatör için `10.0.2.2`, masaüstü için `127.0.0.1` otomatik seçilir.
+- Gerekirse `--dart-define=BACKEND_URL=...` ile override edin.
 
 ---
 

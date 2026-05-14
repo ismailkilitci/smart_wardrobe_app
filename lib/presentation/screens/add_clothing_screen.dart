@@ -1,8 +1,11 @@
-import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
+
+import '../../data/models/wardrobe_models.dart';
 import '../../data/services/ai_service.dart';
-import '../../data/models/ai_models.dart';
 
 class AddClothingScreen extends StatefulWidget {
   const AddClothingScreen({super.key});
@@ -14,11 +17,13 @@ class AddClothingScreen extends StatefulWidget {
 class _AddClothingScreenState extends State<AddClothingScreen> {
   final ImagePicker _picker = ImagePicker();
   final AIService _aiService = AIService();
-  
-  File? _selectedImage;
+
+  XFile? _selectedImage;
+  Uint8List? _previewBytes;
+
   bool _isProcessing = false;
   String? _result;
-  List<AnalyzedItem>? _analyzedItems;
+  WardrobeItem? _savedItem;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -29,19 +34,80 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
         imageQuality: 85,
       );
 
-      if (image != null) {
-        setState(() {
-          _selectedImage = File(image.path);
-          _result = null;
-          _analyzedItems = null;
-        });
-      }
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
+
+      setState(() {
+        _selectedImage = image;
+        _previewBytes = bytes;
+        _result = null;
+        _savedItem = null;
+      });
     } catch (e) {
-      _showError('Resim seçilirken hata: $e');
+      _showError('Error selecting image: $e');
     }
   }
 
-  Future<void> _analyzeImage() async {
+  Future<void> _pickImageFromFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        // On some Android versions/emulators, Downloads items may not be
+        // classified correctly as images for mime-based filtering.
+        // We allow any file and validate after selection.
+        type: FileType.any,
+        withData: true,
+      );
+
+      final file = result?.files.single;
+      if (file == null) return;
+
+      final Uint8List? bytes = file.bytes;
+      final String? path = file.path;
+
+      final ext = (file.extension ?? '').toLowerCase();
+      const allowed = {
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'gif',
+        'bmp',
+        'heic',
+        'heif',
+      };
+      if (ext.isNotEmpty && !allowed.contains(ext)) {
+        throw Exception('Please select an image file (jpg/png/webp/...)');
+      }
+
+      final XFile xfile;
+      if (path != null && path.isNotEmpty) {
+        xfile = XFile(path, name: file.name);
+      } else if (bytes != null) {
+        xfile = XFile.fromData(bytes, name: file.name);
+      } else {
+        throw Exception('Selected file has no path/bytes');
+      }
+
+      setState(() {
+        _selectedImage = xfile;
+        _previewBytes = bytes;
+        _result = null;
+        _savedItem = null;
+      });
+
+      // If we only have a path (Android/desktop), we still need preview bytes.
+      if (_previewBytes == null) {
+        final readBytes = await xfile.readAsBytes();
+        setState(() {
+          _previewBytes = readBytes;
+        });
+      }
+    } catch (e) {
+      _showError('Error selecting file: $e');
+    }
+  }
+
+  Future<void> _analyzeAndSave() async {
     if (_selectedImage == null) return;
 
     setState(() {
@@ -50,27 +116,24 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
     });
 
     try {
-      // Backend sağlık kontrolü
       await _aiService.healthCheck();
 
-      // Kombin analizi yap
-      final items = await _aiService.analyzeOutfit(_selectedImage!);
+      final item = await _aiService.uploadWardrobeItem(_selectedImage!);
 
       setState(() {
-        _analyzedItems = items;
-        _result = '${items.length} kıyafet tespit edildi!';
+        _savedItem = item;
+        final sub = item.subCategory.trim();
+        final showSub = sub.isNotEmpty && sub.toLowerCase() != 'unknown';
+        _result = showSub
+            ? 'Saved to wardrobe: ${item.mainCategory} / $sub'
+            : 'Saved to wardrobe: ${item.mainCategory}';
         _isProcessing = false;
       });
-
-      if (items.isEmpty) {
-        _showError('Kıyafet tespit edilemedi. Daha net bir fotoğraf çekin.');
-      }
     } catch (e) {
       setState(() {
         _isProcessing = false;
-        _result = 'Hata: $e';
       });
-      _showError('AI analizi yapılırken hata oluştu: $e');
+      _showError('Error while saving wardrobe item: $e');
     }
   }
 
@@ -88,8 +151,8 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Kıyafet Ekle'),
-        backgroundColor: const Color(0xFFB24BF3),
+        title: const Text('Add to Wardrobe'),
+        backgroundColor: const Color(0xFFE91E63),
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
@@ -97,7 +160,6 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Resim önizleme alanı
             Container(
               height: 300,
               decoration: BoxDecoration(
@@ -105,13 +167,10 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.grey.shade300, width: 2),
               ),
-              child: _selectedImage != null
+              child: _previewBytes != null
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(18),
-                      child: Image.file(
-                        _selectedImage!,
-                        fit: BoxFit.cover,
-                      ),
+                      child: Image.memory(_previewBytes!, fit: BoxFit.cover),
                     )
                   : Center(
                       child: Column(
@@ -124,7 +183,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                           ),
                           const SizedBox(height: 16),
                           Text(
-                            'Fotoğraf seçin veya çekin',
+                            'Select or take a photo',
                             style: TextStyle(
                               fontSize: 16,
                               color: Colors.grey.shade600,
@@ -134,18 +193,18 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                       ),
                     ),
             ),
-            const SizedBox(height: 24),
-
-            // Kamera ve galeri butonları
+            const SizedBox(height: 16),
             Row(
               children: [
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _pickImage(ImageSource.camera),
+                    onPressed: _isProcessing
+                        ? null
+                        : () => _pickImage(ImageSource.camera),
                     icon: const Icon(Icons.camera_alt),
-                    label: const Text('Kamera'),
+                    label: const Text('Camera'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFB24BF3),
+                      backgroundColor: const Color(0xFFE91E63),
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
@@ -157,9 +216,9 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed: () => _pickImage(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library),
-                    label: const Text('Galeri'),
+                    onPressed: _isProcessing ? null : _pickImageFromFiles,
+                    icon: const Icon(Icons.folder_open),
+                    label: const Text('Gallery'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFFE91E63),
                       foregroundColor: Colors.white,
@@ -173,26 +232,24 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
               ],
             ),
             const SizedBox(height: 24),
-
-            // Analiz butonu
             if (_selectedImage != null)
               ElevatedButton.icon(
-                onPressed: _isProcessing ? null : _analyzeImage,
+                onPressed: _isProcessing ? null : _analyzeAndSave,
                 icon: _isProcessing
                     ? const SizedBox(
                         width: 20,
                         height: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            Colors.white,
+                          ),
                         ),
                       )
                     : const Icon(Icons.psychology),
-                label: Text(
-                  _isProcessing ? 'Analiz ediliyor...' : 'AI ile Analiz Et',
-                ),
+                label: Text(_isProcessing ? 'Saving...' : 'Analyze & Save'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
+                  backgroundColor: const Color(0xFFE91E63),
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
@@ -200,8 +257,6 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                   ),
                 ),
               ),
-
-            // Sonuç gösterimi
             if (_result != null) ...[
               const SizedBox(height: 24),
               Container(
@@ -219,7 +274,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                         Icon(Icons.check_circle, color: Colors.green.shade700),
                         const SizedBox(width: 8),
                         Text(
-                          'Analiz Sonucu',
+                          'Analysis Result',
                           style: TextStyle(
                             fontSize: 16,
                             fontWeight: FontWeight.bold,
@@ -229,54 +284,17 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                       ],
                     ),
                     const SizedBox(height: 8),
-                    Text(
-                      _result!,
-                      style: const TextStyle(fontSize: 14),
-                    ),
+                    Text(_result!, style: const TextStyle(fontSize: 14)),
                   ],
                 ),
               ),
             ],
-
-            // Tespit edilen kıyafetler
-            if (_analyzedItems != null && _analyzedItems!.isNotEmpty) ...[
-              const SizedBox(height: 16),
-              const Text(
-                'Tespit Edilen Kıyafetler:',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
+            if (_savedItem != null) ...[
               const SizedBox(height: 12),
-              ...(_analyzedItems!.asMap().entries.map((entry) {
-                final index = entry.key;
-                final item = entry.value;
-                return Card(
-                  margin: const EdgeInsets.only(bottom: 12),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: const Color(0xFFB24BF3),
-                      child: Text('${index + 1}'),
-                    ),
-                    title: Text(
-                      item.resnetCategory,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('YOLO: ${item.yoloClass} (${(item.yoloConfidence * 100).toStringAsFixed(1)}%)'),
-                        Text('ResNet: ${(item.resnetConfidence * 100).toStringAsFixed(1)}% güven'),
-                      ],
-                    ),
-                    trailing: Icon(
-                      Icons.checkroom,
-                      color: Colors.purple.shade300,
-                    ),
-                  ),
-                );
-              }).toList()),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Back to wardrobe'),
+              ),
             ],
           ],
         ),

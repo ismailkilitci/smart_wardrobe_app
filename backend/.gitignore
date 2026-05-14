@@ -9,9 +9,7 @@ env/
 ENV/
 .venv
 
-# Model files (too large for git)
-models/*.pth
-models/*.pt
+# Model files are stored with Git LFS from the repo root.
 models/*.onnx
 models/*.h5
 models/*.pkl

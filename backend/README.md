@@ -1,111 +1,94 @@
-# Smart Wardrobe AI Backend
+# Smart Wardrobe Backend
 
-Flask backend servisi - ResNet ve YOLO model entegrasyonu
+Flask API. Flutter uygulamasina gardirob kaydi, kategori tahmini ve kombin
+onerisi saglar.
 
-## Kurulum
+## Model Klasoru
 
-1. Python sanal ortamı oluşturun:
-```bash
-python -m venv venv
-venv\Scripts\activate  # Windows
+Varsayilan aktif model klasoru:
+
+```text
+models/
 ```
 
-2. Gereksinimleri yükleyin:
-```bash
-pip install -r requirements.txt
+Beklenen dosyalar:
+
+```text
+YOLOV8_best.pt
+resnet18_subcat_improved.pth
+subcat_mapping_improved.json
+subcat_to_main_improved.json
+main_to_subcat_ids_improved.json
+resnet50.pth
 ```
 
-3. Model dosyalarınızı `models/` klasörüne koyun:
-   - `models/resnet_model.pth` - ResNet kıyafet sınıflandırma modeli
-   - `models/yolo_model.pt` - YOLO kıyafet tespit modeli
+`resnet50.pth` backend tarafinda yuklenir. Aday kombinler once hard filter ve
+template kurallariyla uretilir, sonra ResNet50 compatibility score ve heuristic
+score birlikte kullanilarak siralanir. Score API cevabinda gosterilmez.
 
-## Çalıştırma
+Model klasorunu elle vermek icin:
 
-```bash
-python app.py
+```powershell
+$env:MODEL_DIR="C:\path\to\modelw"
+.\.venv\Scripts\python.exe backend\app.py
 ```
 
-Servis `http://localhost:5000` adresinde çalışacak.
+## Calistirma
 
-## API Endpoints
+Repo kokunden:
 
-### 1. Health Check
-```
-GET /health
-```
-
-### 2. Kıyafet Sınıflandırma (ResNet)
-```
-POST /api/classify
-Content-Type: multipart/form-data
-Body: image (file)
+```powershell
+.\.venv\Scripts\python.exe backend\app.py
 ```
 
-Response:
-```json
-{
-  "success": true,
-  "category": "Gömlek",
-  "confidence": 0.95,
-  "class_id": 1
-}
+Backend varsayilan olarak `http://127.0.0.1:5000` adresinde acilir.
+
+## Endpointler
+
+```text
+GET    /health
+GET    /metadata/categories
+POST   /wardrobe/items
+GET    /wardrobe/items
+PATCH  /wardrobe/items/{id}
+DELETE /wardrobe/items/{id}
+POST   /wardrobe/items/{id}/reanalyze
+POST   /recommendations
+POST   /api/analyze
 ```
 
-### 3. Kıyafet Tespiti (YOLO)
-```
-POST /api/detect
-Content-Type: multipart/form-data
-Body: image (file)
-```
+`/api/analyze` eski uyumluluk endpoint'idir; item kaydetmez.
 
-Response:
-```json
-{
-  "success": true,
-  "detections": [
-    {
-      "bbox": [100, 150, 300, 450],
-      "confidence": 0.92,
-      "class_id": 0,
-      "class_name": "shirt"
-    }
-  ],
-  "count": 1
-}
+## Kombin Parametreleri
+
+Weather tipleri korunur:
+
+```text
+hot, mild, cold, rainy
 ```
 
-### 4. Kombin Analizi (YOLO + ResNet)
-```
-POST /api/analyze
-Content-Type: multipart/form-data
-Body: image (file)
-```
+Event tipleri:
 
-Response:
-```json
-{
-  "success": true,
-  "items": [
-    {
-      "bbox": [100, 150, 300, 450],
-      "yolo_class": "shirt",
-      "yolo_confidence": 0.92,
-      "resnet_category": "Gömlek",
-      "resnet_confidence": 0.95
-    }
-  ],
-  "count": 1
-}
+```text
+casual, smart-casual, formal, sport
 ```
 
-## Flutter Entegrasyonu
+Mood tipleri:
 
-Flutter uygulamanızdan şu şekilde kullanabilirsiniz:
-
-```dart
-// Android emülatörde
-final url = 'http://10.0.2.2:5000/api/classify';
-
-// Gerçek cihazda (bilgisayarınızın local IP'si)
-final url = 'http://192.168.1.X:5000/api/classify';
+```text
+happy, professional, relaxed, calm
 ```
+
+`/recommendations` tek outfit dondurur. Secim ResNet50 + heuristic siralamasina
+gore yapilir, fakat score alani response icinde yoktur.
+
+## Lokal Veri
+
+```text
+uploads/      Yuklenen kiyafet gorselleri
+wardrobe.db   Lokal SQLite gardirob verisi
+tmp/          Gecici test/debug dosyalari
+```
+
+`uploads/` ve `wardrobe.db` kullanici verisi oldugu icin otomatik temizlikte
+silinmemelidir.

@@ -11,20 +11,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:smart_wardrobe_app/main.dart';
 
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
+  testWidgets('App loads and shows bottom navigation', (
+    WidgetTester tester,
+  ) async {
     await tester.pumpWidget(const SmartWardrobeApp());
+    await tester.pumpAndSettle();
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    // Login flow (demo credentials)
+    await tester.enterText(find.byType(TextFormField).at(0), 'demo');
+    await tester.enterText(find.byType(TextFormField).at(1), '123');
+    await tester.tap(find.text('Sign In'));
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
+    // Login waits 1 second (Future.delayed)
     await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+    await tester.pumpAndSettle();
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+    expect(find.text('Recommend'), findsOneWidget);
+    expect(find.text('Wardrobe'), findsOneWidget);
   });
 }

@@ -1,131 +1,240 @@
-import 'dart:io';
-import 'package:http/http.dart' as http;
 import 'dart:convert';
-import '../models/ai_models.dart';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:image_picker/image_picker.dart';
+
+import '../models/wardrobe_models.dart';
 
 class AIService {
-  // Android emülatör için 10.0.2.2, gerçek cihaz için local IP kullanın
-  static const String baseUrl = 'http://10.0.2.2:5000';
-  
-  // Gerçek cihaz için (bilgisayarınızın local IP'sini buraya yazın):
-  // static const String baseUrl = 'http://192.168.1.100:5000';
+  /// Override with:
+  /// flutter run --dart-define=BACKEND_URL=http://192.168.1.100:5000
+  static String get baseUrl {
+    const override = String.fromEnvironment('BACKEND_URL', defaultValue: '');
+    if (override.isNotEmpty) return override;
 
-  /// Backend servisinin çalışıp çalışmadığını kontrol eder
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:5000';
+    }
+    return 'http://127.0.0.1:5000';
+  }
+
+  Future<http.MultipartFile> _multipartFromXFile(XFile imageFile) async {
+    if (kIsWeb) {
+      final Uint8List bytes = await imageFile.readAsBytes();
+      return http.MultipartFile.fromBytes(
+        'image',
+        bytes,
+        filename: imageFile.name,
+      );
+    }
+
+    return http.MultipartFile.fromPath('image', imageFile.path);
+  }
+
   Future<Map<String, dynamic>> healthCheck() async {
     try {
-      final response = await http.get(
-        Uri.parse('$baseUrl/health'),
-      ).timeout(const Duration(seconds: 5));
+      final response = await http
+          .get(Uri.parse('$baseUrl/health'))
+          .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
-        return json.decode(response.body);
-      } else {
-        throw Exception('Backend service unavailable');
+        return json.decode(response.body) as Map<String, dynamic>;
       }
+      throw Exception('Backend service unavailable');
     } catch (e) {
       throw Exception('Cannot connect to backend: $e');
     }
   }
 
-  /// Kıyafet sınıflandırma (ResNet)
-  Future<ClothingItem> classifyClothing(File imageFile) async {
+  Future<WardrobeItem> uploadWardrobeItem(
+    XFile imageFile, {
+    String? forcedMainCategory,
+  }) async {
     try {
-      var request = http.MultipartRequest(
+      final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$baseUrl/api/classify'),
+        Uri.parse('$baseUrl/wardrobe/items'),
       );
 
-      request.files.add(
-        await http.MultipartFile.fromPath('image', imageFile.path),
-      );
+      request.files.add(await _multipartFromXFile(imageFile));
+
+      if (forcedMainCategory != null && forcedMainCategory.isNotEmpty) {
+        request.fields['forced_main_category'] = forcedMainCategory;
+      }
 
       final streamedResponse = await request.send().timeout(
-        const Duration(seconds: 30),
+        const Duration(seconds: 60),
       );
       final response = await http.Response.fromStream(streamedResponse);
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          return ClothingItem.fromJson(data);
-        } else {
-          throw Exception(data['error'] ?? 'Classification failed');
-        }
-      } else {
-        throw Exception('Server error: ${response.statusCode}');
+        return WardrobeItem.fromJson(
+          json.decode(response.body) as Map<String, dynamic>,
+        );
       }
+      throw Exception('Server error: ${response.statusCode} ${response.body}');
     } catch (e) {
-      throw Exception('Classification error: $e');
+      throw Exception('Upload wardrobe item error: $e');
     }
   }
 
-  /// Kıyafet tespiti (YOLO)
-  Future<List<Detection>> detectClothing(File imageFile) async {
+  Future<List<WardrobeItem>> listWardrobeItems() async {
     try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/api/detect'),
-      );
-
-      request.files.add(
-        await http.MultipartFile.fromPath('image', imageFile.path),
-      );
-
-      final streamedResponse = await request.send().timeout(
-        const Duration(seconds: 30),
-      );
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await http
+          .get(Uri.parse('$baseUrl/wardrobe/items'))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          final detections = (data['detections'] as List)
-              .map((item) => Detection.fromJson(item))
-              .toList();
-          return detections;
-        } else {
-          throw Exception(data['error'] ?? 'Detection failed');
-        }
-      } else {
-        throw Exception('Server error: ${response.statusCode}');
+        final list = json.decode(response.body) as List;
+        return list
+            .map((e) => WardrobeItem.fromJson(e as Map<String, dynamic>))
+            .toList();
       }
+      throw Exception('Server error: ${response.statusCode}');
     } catch (e) {
-      throw Exception('Detection error: $e');
+      throw Exception('List wardrobe error: $e');
     }
   }
 
-  /// Kombin analizi (YOLO + ResNet)
-  Future<List<AnalyzedItem>> analyzeOutfit(File imageFile) async {
+  Future<CategoryMetadata> fetchCategoryMetadata() async {
     try {
-      var request = http.MultipartRequest(
-        'POST',
-        Uri.parse('$baseUrl/api/analyze'),
-      );
-
-      request.files.add(
-        await http.MultipartFile.fromPath('image', imageFile.path),
-      );
-
-      final streamedResponse = await request.send().timeout(
-        const Duration(seconds: 60), // Analiz daha uzun sürebilir
-      );
-      final response = await http.Response.fromStream(streamedResponse);
+      final response = await http
+          .get(Uri.parse('$baseUrl/metadata/categories'))
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['success'] == true) {
-          final items = (data['items'] as List)
-              .map((item) => AnalyzedItem.fromJson(item))
-              .toList();
-          return items;
-        } else {
-          throw Exception(data['error'] ?? 'Analysis failed');
-        }
-      } else {
-        throw Exception('Server error: ${response.statusCode}');
+        return CategoryMetadata.fromJson(
+          json.decode(response.body) as Map<String, dynamic>,
+        );
       }
+      throw Exception('Server error: ${response.statusCode}');
     } catch (e) {
-      throw Exception('Analysis error: $e');
+      throw Exception('Category metadata error: $e');
+    }
+  }
+
+  Future<CurrentWeather> fetchCurrentWeather({
+    required double latitude,
+    required double longitude,
+  }) async {
+    try {
+      final uri = Uri.parse('$baseUrl/weather/current').replace(
+        queryParameters: {
+          'latitude': latitude.toString(),
+          'longitude': longitude.toString(),
+        },
+      );
+      final response = await http.get(uri).timeout(const Duration(seconds: 12));
+
+      if (response.statusCode == 200) {
+        return CurrentWeather.fromJson(
+          json.decode(response.body) as Map<String, dynamic>,
+        );
+      }
+      throw Exception('Server error: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      throw Exception('Current weather error: $e');
+    }
+  }
+
+  Future<WardrobeItem> updateWardrobeItem(
+    String id, {
+    required String mainCategory,
+    required String subCategory,
+    required bool manualOverride,
+  }) async {
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/wardrobe/items/$id'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'main_category': mainCategory,
+              'sub_category': subCategory,
+              'manual_override': manualOverride,
+            }),
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        return WardrobeItem.fromJson(
+          json.decode(response.body) as Map<String, dynamic>,
+        );
+      }
+      throw Exception('Server error: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      throw Exception('Update wardrobe item error: $e');
+    }
+  }
+
+  Future<void> deleteWardrobeItem(String id) async {
+    try {
+      final response = await http
+          .delete(Uri.parse('$baseUrl/wardrobe/items/$id'))
+          .timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) return;
+      throw Exception('Server error: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      throw Exception('Delete wardrobe item error: $e');
+    }
+  }
+
+  Future<WardrobeItem> reanalyzeWardrobeItem(
+    String id, {
+    String? forcedMainCategory,
+  }) async {
+    try {
+      final query =
+          (forcedMainCategory != null && forcedMainCategory.isNotEmpty)
+          ? '?forced_main_category=$forcedMainCategory'
+          : '';
+      final response = await http
+          .post(Uri.parse('$baseUrl/wardrobe/items/$id/reanalyze$query'))
+          .timeout(const Duration(seconds: 60));
+      if (response.statusCode == 200) {
+        return WardrobeItem.fromJson(
+          json.decode(response.body) as Map<String, dynamic>,
+        );
+      }
+      throw Exception('Server error: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      throw Exception('Reanalyze wardrobe item error: $e');
+    }
+  }
+
+  Future<RecommendationsResponse> recommendOutfits({
+    required String weather,
+    required String event,
+    required String mood,
+    required String gender,
+    required bool outerwearRequired,
+    String? anchorItemId,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/recommendations'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'weather': weather,
+              'event': event,
+              'mood': mood,
+              'gender': gender,
+              'outerwear_required': outerwearRequired,
+              'anchor_item_id': anchorItemId,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return RecommendationsResponse.fromJson(
+          json.decode(response.body) as Map<String, dynamic>,
+        );
+      }
+      throw Exception('Server error: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      throw Exception('Recommendations error: $e');
     }
   }
 }

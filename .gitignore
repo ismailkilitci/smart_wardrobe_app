@@ -43,3 +43,18 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Python/backend local runtime files
+.venv/
+backend/venv/
+__pycache__/
+**/__pycache__/
+backend/tmp/
+
+# ML model archives / generated model directories
+/backend/models/*.zip
+/backend/models/resnet_model/
+/backend/models/yolo_model/
+/resnet50.pth.zip
+*.ptl
+*.onnx

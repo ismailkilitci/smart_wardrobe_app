@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'presentation/screens/login_screen.dart';
 import 'presentation/screens/home_screen.dart';
+// import 'presentation/screens/login_screen.dart';
 
 void main() {
   runApp(const SmartWardrobeApp());
@@ -18,18 +17,15 @@ class SmartWardrobeApp extends StatelessWidget {
       // Uygulamanın genel temasını buradan ayarlıyoruz.
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.teal, // Ana renk (PSD'ye göre değiştirirsin)
+          seedColor: const Color(0xFFE91E63),
           brightness: Brightness.light,
         ),
         useMaterial3: true,
-        // Tüm uygulamada modern bir font kullanalım
-        textTheme: GoogleFonts.poppinsTextTheme(),
       ),
       // Login ekranı ile başlıyoruz
-      home: const LoginScreen(),
-      routes: {
-        '/home': (context) => const HomeScreen(),
-      },
+      // home: const LoginScreen(),
+      home: const HomeScreen(),
+      routes: {'/home': (context) => const HomeScreen()},
     );
   }
 }
