@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../../data/services/ai_service.dart';
 import 'outfit_results_screen.dart';
@@ -13,31 +16,114 @@ class RecommendationScreen extends StatefulWidget {
 
 class _RecommendationScreenState extends State<RecommendationScreen> {
   final AIService _service = AIService();
+  final ImagePicker _picker = ImagePicker();
   static const double _fallbackLatitude = 40.9869;
   static const double _fallbackLongitude = 29.0576;
-
-  final _formKey = GlobalKey<FormState>();
 
   String _weather = 'mild';
   String _event = 'casual';
   String _mood = 'relaxed';
-  String _gender = 'male';
+  String _gender = 'no preference';
+  bool _outerwearRequired = false;
+  XFile? _previewImage;
+  Uint8List? _previewBytes;
 
   bool _loading = false;
   bool _weatherLoading = false;
   String? _weatherStatus;
 
+  // ── Chip selector builder ──────────────────────────────────────────────────
+
+  Widget _chipSelector({
+    required List<String> options,
+    required String selected,
+    required void Function(String) onChanged,
+    Map<String, String>? labels,
+    Map<String, IconData>? icons,
+  }) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: options.map((opt) {
+        final isSelected = selected == opt;
+        final label = labels?[opt] ?? opt;
+        return ChoiceChip(
+          avatar: icons != null
+              ? Icon(
+                  icons[opt],
+                  size: 14,
+                  color: isSelected
+                      ? const Color(0xFFE91E63)
+                      : Colors.grey.shade600,
+                )
+              : null,
+          label: Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight:
+                  isSelected ? FontWeight.w700 : FontWeight.w400,
+              color: isSelected
+                  ? const Color(0xFFE91E63)
+                  : Colors.grey.shade700,
+            ),
+          ),
+          selected: isSelected,
+          selectedColor: const Color(0xFFE91E63).withValues(alpha: 0.12),
+          backgroundColor: Colors.white,
+          side: BorderSide(
+            color: isSelected
+                ? const Color(0xFFE91E63)
+                : Colors.grey.shade300,
+            width: isSelected ? 1.5 : 1,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+          showCheckmark: false,
+          onSelected: (_) => onChanged(opt),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _section({required String title, required Widget child}) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      padding: const EdgeInsets.all(14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title.toUpperCase(),
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+              color: Color(0xFF9E9E9E),
+            ),
+          ),
+          const SizedBox(height: 10),
+          child,
+        ],
+      ),
+    );
+  }
+
+  // ── Location & weather ─────────────────────────────────────────────────────
+
   Future<Position> _currentPosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) {
-      throw Exception('Location services are disabled.');
-    }
+    if (!serviceEnabled) throw Exception('Location services are disabled.');
 
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
     }
-
     if (permission == LocationPermission.denied) {
       throw Exception('Location permission denied.');
     }
@@ -59,27 +145,27 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
   Future<void> _useCurrentWeather() async {
     setState(() {
       _weatherLoading = true;
-      _weatherStatus = 'Getting location...';
+      _weatherStatus = 'Getting location…';
     });
 
     try {
       double latitude = _fallbackLatitude;
       double longitude = _fallbackLongitude;
-      var usedFallbackLocation = false;
+      var usedFallback = false;
 
       try {
-        final position = await _currentPosition();
-        latitude = position.latitude;
-        longitude = position.longitude;
+        final pos = await _currentPosition();
+        latitude = pos.latitude;
+        longitude = pos.longitude;
       } catch (_) {
-        usedFallbackLocation = true;
+        usedFallback = true;
       }
 
       if (!mounted) return;
       setState(() {
-        _weatherStatus = usedFallbackLocation
-            ? 'Location unavailable. Using Istanbul weather...'
-            : 'Fetching weather...';
+        _weatherStatus = usedFallback
+            ? 'Location unavailable — using Istanbul…'
+            : 'Fetching weather…';
       });
 
       final current = await _service.fetchCurrentWeather(
@@ -91,76 +177,73 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
       setState(() {
         _weather = current.weather;
         final temp = current.temperatureC != null
-            ? '${current.temperatureC!.toStringAsFixed(1)}C'
-            : 'temp unknown';
-        final source = usedFallbackLocation
-            ? 'Istanbul weather'
-            : 'Auto weather';
+            ? '${current.temperatureC!.toStringAsFixed(1)}°C'
+            : '';
+        final src = usedFallback ? 'Istanbul' : 'Current location';
         _weatherStatus =
-            '$source: ${current.weather} ($temp, ${current.description})';
+            '$src: ${current.weather}${temp.isNotEmpty ? " · $temp" : ""} — ${current.description}';
       });
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _weatherStatus = 'Auto weather failed. You can choose manually.';
+        _weatherStatus = 'Auto-detect failed. Choose manually.';
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Weather failed: $e')));
     } finally {
-      if (mounted) {
-        setState(() {
-          _weatherLoading = false;
-        });
-      }
+      if (mounted) setState(() => _weatherLoading = false);
     }
   }
 
-  Future<void> _recommend() async {
-    if (!_formKey.currentState!.validate()) return;
+  // ── Image picker ───────────────────────────────────────────────────────────
 
-    // Basic guard: recommendations make sense after adding items.
+  Future<void> _pickPreviewImage(ImageSource source) async {
     try {
-      final items = await _service.listWardrobeItems();
+      final image = await _picker.pickImage(
+        source: source,
+        maxWidth: 1920,
+        maxHeight: 1920,
+        imageQuality: 85,
+      );
+      if (image == null) return;
+      final bytes = await image.readAsBytes();
       if (!mounted) return;
-      if (items.length < 3) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Please add more wardrobe items first.'),
-          ),
-        );
-        return;
-      }
-    } catch (_) {
-      // If wardrobe fetch fails, still allow trying recommendations.
+      setState(() {
+        _previewImage = image;
+        _previewBytes = bytes;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Image selection failed: $e')));
     }
+  }
 
-    setState(() {
-      _loading = true;
-    });
+  // ── Recommendations ────────────────────────────────────────────────────────
 
+  RecommendContextParams get _contextParams => RecommendContextParams(
+    weather: _weather,
+    event: _event,
+    mood: _mood,
+    gender: _gender,
+    outerwearRequired: _outerwearRequired,
+  );
+
+  Future<void> _recommend() async {
+    setState(() => _loading = true);
     try {
       final resp = await _service.recommendOutfits(
         weather: _weather,
         event: _event,
         mood: _mood,
         gender: _gender,
-        outerwearRequired: false,
+        outerwearRequired: _outerwearRequired,
       );
-
       if (!mounted) return;
-
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => OutfitResultsScreen(
-            contextParams: RecommendContextParams(
-              weather: _weather,
-              event: _event,
-              mood: _mood,
-              gender: _gender,
-              outerwearRequired: false,
-            ),
+            contextParams: _contextParams,
             initial: resp,
           ),
         ),
@@ -171,129 +254,382 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Recommendation failed: $e')));
     } finally {
-      if (mounted) {
-        setState(() {
-          _loading = false;
-        });
-      }
+      if (mounted) setState(() => _loading = false);
     }
   }
+
+  Future<void> _recommendWithoutSaving() async {
+    final image = _previewImage;
+    if (image == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select or take a photo first.')),
+      );
+      return;
+    }
+
+    setState(() => _loading = true);
+    try {
+      await _service.healthCheck();
+      final resp = await _service.recommendForImage(
+        imageFile: image,
+        weather: _weather,
+        event: _event,
+        mood: _mood,
+        gender: _gender,
+        outerwearRequired: _outerwearRequired,
+      );
+      if (!mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => OutfitResultsScreen(
+            contextParams: _contextParams,
+            initial: resp,
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Recommendation failed: $e')));
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Text(
-                'Outfit Recommendations',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 16),
-
-              DropdownButtonFormField<String>(
-                value: _weather,
-                decoration: const InputDecoration(labelText: 'Weather'),
-                items: const [
-                  DropdownMenuItem(value: 'hot', child: Text('hot')),
-                  DropdownMenuItem(value: 'mild', child: Text('mild')),
-                  DropdownMenuItem(value: 'cold', child: Text('cold')),
-                  DropdownMenuItem(value: 'rainy', child: Text('rainy')),
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 100),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Weather
+            _section(
+              title: 'Weather',
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _chipSelector(
+                    options: const ['hot', 'mild', 'cold', 'rainy'],
+                    selected: _weather,
+                    onChanged: (v) => setState(() => _weather = v),
+                    labels: const {
+                      'hot': 'Hot',
+                      'mild': 'Mild',
+                      'cold': 'Cold',
+                      'rainy': 'Rainy',
+                    },
+                    icons: const {
+                      'hot': Icons.wb_sunny_outlined,
+                      'mild': Icons.wb_cloudy_outlined,
+                      'cold': Icons.ac_unit,
+                      'rainy': Icons.water_drop_outlined,
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _weatherLoading ? null : _useCurrentWeather,
+                      icon: _weatherLoading
+                          ? const SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.my_location, size: 16),
+                      label: Text(
+                        _weatherLoading
+                            ? 'Detecting weather…'
+                            : 'Auto-detect weather',
+                        style: const TextStyle(fontSize: 13),
+                      ),
+                    ),
+                  ),
+                  if (_weatherStatus != null) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 13,
+                            color: Colors.blue.shade600,
+                          ),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: Text(
+                              _weatherStatus!,
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.blue.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
-                onChanged: (v) => setState(() => _weather = v ?? 'mild'),
               ),
-              const SizedBox(height: 8),
-              OutlinedButton.icon(
-                onPressed: _weatherLoading ? null : _useCurrentWeather,
-                icon: _weatherLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.my_location),
-                label: Text(
-                  _weatherLoading
-                      ? 'Checking weather...'
-                      : 'Use current weather',
+            ),
+            const SizedBox(height: 10),
+
+            // Event
+            _section(
+              title: 'Occasion',
+              child: _chipSelector(
+                options: const ['casual', 'smart-casual', 'formal', 'sport'],
+                selected: _event,
+                onChanged: (v) => setState(() => _event = v),
+                labels: const {
+                  'casual': 'Casual',
+                  'smart-casual': 'Smart Casual',
+                  'formal': 'Formal',
+                  'sport': 'Sport',
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Mood
+            _section(
+              title: 'Mood',
+              child: _chipSelector(
+                options: const ['energetic', 'professional', 'relaxed', 'calm'],
+                selected: _mood,
+                onChanged: (v) => setState(() => _mood = v),
+                labels: const {
+                  'energetic': 'Energetic',
+                  'professional': 'Professional',
+                  'relaxed': 'Relaxed',
+                  'calm': 'Calm',
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Gender
+            _section(
+              title: 'Style Preference',
+              child: _chipSelector(
+                options: const ['no preference', 'female', 'male'],
+                selected: _gender,
+                onChanged: (v) => setState(() => _gender = v),
+                labels: const {
+                  'no preference': 'No preference',
+                  'female': 'Female',
+                  'male': 'Male',
+                },
+              ),
+            ),
+            const SizedBox(height: 10),
+
+            // Outerwear toggle
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: Colors.grey.shade200),
+              ),
+              child: SwitchListTile.adaptive(
+                contentPadding:
+                    const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                title: const Text(
+                  'Require outerwear',
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+                ),
+                subtitle: const Text(
+                  'Include a jacket or coat',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: _outerwearRequired,
+                activeThumbColor: Colors.white,
+                activeTrackColor: const Color(0xFFE91E63),
+                onChanged: (v) => setState(() => _outerwearRequired = v),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Main CTA
+            FilledButton.icon(
+              onPressed: _loading ? null : _recommend,
+              icon: _loading
+                  ? const SizedBox(
+                      width: 17,
+                      height: 17,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Icon(Icons.auto_awesome, size: 18),
+              label: Text(
+                _loading ? 'Finding outfits…' : 'Get Outfit Recommendations',
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              if (_weatherStatus != null) ...[
-                const SizedBox(height: 6),
-                Text(
-                  _weatherStatus!,
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 16),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Divider
+            Row(
+              children: [
+                Expanded(child: Divider(color: Colors.grey.shade300)),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    'or recommend from a photo',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade500,
+                    ),
+                  ),
+                ),
+                Expanded(child: Divider(color: Colors.grey.shade300)),
+              ],
+            ),
+            const SizedBox(height: 14),
+
+            // Photo picker buttons
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () => _pickPreviewImage(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt_outlined, size: 17),
+                    label: const Text('Camera'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _loading
+                        ? null
+                        : () => _pickPreviewImage(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined, size: 17),
+                    label: const Text('Gallery'),
+                    style: OutlinedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 13),
+                    ),
+                  ),
                 ),
               ],
-              const SizedBox(height: 12),
+            ),
 
-              DropdownButtonFormField<String>(
-                value: _event,
-                decoration: const InputDecoration(labelText: 'Event'),
-                items: const [
-                  DropdownMenuItem(value: 'casual', child: Text('casual')),
-                  DropdownMenuItem(
-                    value: 'smart-casual',
-                    child: Text('smart-casual'),
+            // Photo preview
+            if (_previewBytes != null) ...[
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: SizedBox(
+                  height: 200,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: [
+                      Image.memory(_previewBytes!, fit: BoxFit.cover),
+                      // Dark overlay at bottom
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        child: Container(
+                          height: 70,
+                          decoration: const BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.bottomCenter,
+                              end: Alignment.topCenter,
+                              colors: [Colors.black54, Colors.transparent],
+                            ),
+                          ),
+                        ),
+                      ),
+                      // Button overlay
+                      Positioned(
+                        bottom: 10,
+                        left: 12,
+                        right: 12,
+                        child: FilledButton.icon(
+                          onPressed: _loading ? null : _recommendWithoutSaving,
+                          icon: _loading
+                              ? const SizedBox(
+                                  width: 15,
+                                  height: 15,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.auto_awesome, size: 16),
+                          label: Text(
+                            _loading
+                                ? 'Working…'
+                                : 'Recommend from this photo',
+                            style: const TextStyle(fontSize: 13),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: Colors.black.withValues(
+                              alpha: 0.65,
+                            ),
+                            foregroundColor: Colors.white,
+                            padding:
+                                const EdgeInsets.symmetric(vertical: 10),
+                          ),
+                        ),
+                      ),
+                      // Remove photo button
+                      Positioned(
+                        top: 8,
+                        right: 8,
+                        child: GestureDetector(
+                          onTap: () => setState(() {
+                            _previewImage = null;
+                            _previewBytes = null;
+                          }),
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.5),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              size: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  DropdownMenuItem(value: 'formal', child: Text('formal')),
-                  DropdownMenuItem(value: 'sport', child: Text('sport')),
-                ],
-                onChanged: (v) => setState(() => _event = v ?? 'casual'),
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _mood,
-                decoration: const InputDecoration(labelText: 'Mood'),
-                items: const [
-                  DropdownMenuItem(value: 'happy', child: Text('happy')),
-                  DropdownMenuItem(
-                    value: 'professional',
-                    child: Text('professional'),
-                  ),
-                  DropdownMenuItem(value: 'relaxed', child: Text('relaxed')),
-                  DropdownMenuItem(value: 'calm', child: Text('calm')),
-                ],
-                onChanged: (v) => setState(() => _mood = v ?? 'relaxed'),
-              ),
-              const SizedBox(height: 12),
-
-              DropdownButtonFormField<String>(
-                value: _gender,
-                decoration: const InputDecoration(labelText: 'Gender'),
-                items: const [
-                  DropdownMenuItem(value: 'male', child: Text('male')),
-                  DropdownMenuItem(value: 'female', child: Text('female')),
-                ],
-                onChanged: (v) => setState(() => _gender = v ?? 'male'),
-              ),
-              const SizedBox(height: 16),
-
-              FilledButton.icon(
-                onPressed: _loading ? null : _recommend,
-                icon: _loading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.auto_awesome),
-                label: Text(_loading ? 'Working...' : 'Recommend outfit'),
-              ),
-
-              const SizedBox(height: 12),
-              const Text(
-                'Tip: First add items to your wardrobe, then request recommendations.',
-                textAlign: TextAlign.center,
+                ),
               ),
             ],
-          ),
+            const SizedBox(height: 20),
+          ],
         ),
       ),
     );
@@ -306,6 +642,7 @@ class RecommendContextParams {
   final String mood;
   final String gender;
   final bool outerwearRequired;
+  final String? anchorItemId;
 
   RecommendContextParams({
     required this.weather,
@@ -313,5 +650,6 @@ class RecommendContextParams {
     required this.mood,
     required this.gender,
     required this.outerwearRequired,
+    this.anchorItemId,
   });
 }

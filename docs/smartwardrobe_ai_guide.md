@@ -456,18 +456,18 @@ Event:
 
 ```text
 casual
+smart-casual
 formal
-business
 sport
 ```
 
 Mood:
 
 ```text
-happy
+energetic
 professional
 relaxed
-romantic
+calm
 ```
 
 Gender:
@@ -762,12 +762,12 @@ Desteklenen degerler:
 
 ```text
 casual
+smart-casual
 formal
-business
 sport
 ```
 
-Formal/business icin:
+Formal/smart-casual icin:
 
 ```text
 male shirt
@@ -798,10 +798,10 @@ Mood hard filter degildir. Soft preference olarak kullanilir.
 Desteklenen degerler:
 
 ```text
-happy
+energetic
 professional
 relaxed
-romantic
+calm
 ```
 
 Ornek:
@@ -1076,8 +1076,8 @@ Uygulama sunlari yapmali:
 8. Gardrop item'lari local database veya backend database'te main_category, sub_category ve image path ile saklanmali.
 9. Kullanici weather, event, mood, gender ve outerwear_required secerek kombin onerisi alabilmeli.
 10. Weather secenekleri: hot, mild, cold, rainy.
-11. Event secenekleri: casual, formal, business, sport.
-12. Mood secenekleri: happy, professional, relaxed, romantic.
+11. Event secenekleri: casual, smart-casual, formal, sport.
+12. Mood secenekleri: energetic, professional, relaxed, calm.
 13. Gender secenekleri: male, female, no preference.
 14. Outerwear checkbox true ise tum kombinlerde outerwear zorunlu olmali.
 15. Sistem 3 adet kombin onermeli.
@@ -1085,7 +1085,7 @@ Uygulama sunlari yapmali:
 17. Hot havada outerwear onerilmemeli, sadece checkbox true ise denenmeli.
 18. Mild havada outerwear dusuk ihtimal olmali. Hoodie/sweater/sweatshirt varsa ceket onerisi cezalandirilmali.
 19. Cold ve rainy havada outerwear bonus almali.
-20. Formal/business secilince formal shoes, male shirt, blazer, male suit pants gibi subcategory'ler one alinmali.
+20. Formal/smart-casual secilince formal shoes, male shirt, blazer, male suit pants gibi subcategory'ler one alinmali.
 21. Casual/relaxed secilince hoodie, jeans, sneakers gibi parcalar one alinmali.
 22. Rainy secilince sandals/flip-flops/slippers cezalandirilmali, boots/closed shoes one alinmali.
 23. Sport secilince formal shoes/blazer/suit pants cezalandirilmali.

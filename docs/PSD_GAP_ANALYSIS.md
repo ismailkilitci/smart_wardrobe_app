@@ -11,7 +11,7 @@ Kaynak: `docs/Smart Wardrobe PSD.pdf`
 - Hard filter/template tabanli aday kombin uretimi.
 - ResNet50 compatibility modeliyle aday kombin siralama.
 - Open-Meteo uzerinden cihaz konumuna gore otomatik weather alma.
-- API'de tek outfit dondurme ve score alanini UI/API'de gizleme.
+- API'de tek outfit dondurme ve score alanini UI/API'de gosterme.
 - Kiyafet embedding cache: her item icin 2048 boyutlu ResNet50 backbone vektoru
   `wardrobe.db` icinde saklaniyor.
 - Eski item'lar icin startup backfill: embedding eksikse backend acilisinda

@@ -24,6 +24,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Kamera, gardiroba kiyafet fotografi eklemek icin kullanilir.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Fotograf arsivi, gardiroba mevcut kiyafet fotografi eklemek icin kullanilir.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Konumun, bulundugun yerdeki hava durumuna gore kombin onermek icin kullanilir.</string>
 	<key>UILaunchStoryboardName</key>

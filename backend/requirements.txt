@@ -7,3 +7,4 @@ torchvision==0.20.1
 ultralytics>=8.1.0
 Pillow==10.1.0
 numpy>=1.26.0
+pillow-heif>=0.13.0
