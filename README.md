@@ -36,6 +36,24 @@ Su an aktif AI akisi:
 - JSON mapping: subcategory tahminini main category ile kisitlama
 - ResNet50: item embedding uretimi ve aday kombinleri compatibility score ile siralama
 
+## Ilk Kurulum
+
+Clone sonrasi once Git LFS dosyalarini cekin. Model dosyalari, ornek gorseller
+ve lokal veritabani Git LFS ile tutulur:
+
+```powershell
+git lfs install
+git lfs pull
+```
+
+Ardindan Flutter ve backend bagimliliklarini kurun:
+
+```powershell
+flutter pub get
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r backend\requirements.txt
+```
+
 ## Calistirma
 
 Backend:
@@ -57,6 +75,27 @@ baglanir. Gercek cihazda bilgisayarin local IP'si verilmelidir:
 flutter run --dart-define=BACKEND_URL=http://192.168.1.100:5000
 ```
 
+## Telefonda Calistirma
+
+Android APK:
+
+```powershell
+flutter build apk --release --dart-define=BACKEND_URL=http://192.168.1.100:5000
+```
+
+APK ciktisi:
+
+```text
+build/app/outputs/flutter-apk/app-release.apk
+```
+
+iOS icin Mac + Xcode gerekir. iPhone ve backend ayni agda olmali; `127.0.0.1`
+yerine backend'i calistiran bilgisayarin IP adresi verilmelidir:
+
+```bash
+flutter run -d ios --dart-define=BACKEND_URL=http://192.168.1.100:5000
+```
+
 ## Kontrol Komutlari
 
 ```powershell
@@ -74,7 +113,7 @@ flutter analyze
 - Gardirob ekraninda model yanlis tahmin ederse item uzerinden manuel
   kategori duzeltilebilir.
 - Kombin endpoint'i ResNet50 + heuristic ile en iyi adayi secer, tek outfit
-  dondurur ve score alanini UI/API'de gostermez.
+  dondurur ve score alanini UI/API'de gosterir.
 - Her kiyafet icin 2048 boyutlu embedding `wardrobe.db` icinde cache'lenir;
   onerilerde tekrar gorsel analizi yapmak yerine bu vektor kullanilir.
 - Oneri ekraninda `Use current weather` ile cihaz konumundan Open-Meteo hava

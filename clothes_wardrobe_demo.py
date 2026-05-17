@@ -105,19 +105,19 @@ EVENT_MAP = {
         "all-body": ["dress", "romper", "jumpsuit"],
         "outerwear": ["jacket", "male jacket", "cardigan", "track jacket", "male track jacket"],
     },
+    "smart-casual": {
+        "tops": ["blouse", "shirt", "male shirt", "long-sleeve shirt", "male polos"],
+        "bottoms": ["pants", "male pants", "male suit pants", "skirt"],
+        "shoes": ["heels", "pump", "closed shoes", "male formal shoes", "male loafers"],
+        "all-body": ["dress", "set/suit", "male suit"],
+        "outerwear": ["blazer", "jacket", "male formal jacket", "male suit jacket"],
+    },
     "formal": {
         "tops": ["blouse", "shirt", "male shirt", "long-sleeve shirt", "turtleneck sweater"],
         "bottoms": ["pants", "male suit pants", "skirt", "long skirt"],
         "shoes": ["heels", "pump", "closed shoes", "male formal shoes", "male loafers"],
         "all-body": ["dress", "gown", "set/suit", "jumpsuit", "male suit"],
         "outerwear": ["blazer", "coat", "trench coat", "male formal jacket", "male suit jacket"],
-    },
-    "business": {
-        "tops": ["blouse", "shirt", "male shirt", "long-sleeve shirt", "male polos"],
-        "bottoms": ["pants", "male pants", "male suit pants", "skirt"],
-        "shoes": ["heels", "pump", "closed shoes", "male formal shoes", "male loafers"],
-        "all-body": ["dress", "set/suit", "male suit"],
-        "outerwear": ["blazer", "jacket", "male formal jacket", "male suit jacket"],
     },
     "sport": {
         "tops": ["sports bra", "sports long-sleeve shirt", "male sports shirt", "tshirt", "male t-shirt", "tank"],
@@ -150,12 +150,12 @@ MOOD_MAP = {
         "all-body": ["jumpsuit", "romper"],
         "outerwear": ["cardigan", "jacket", "male jacket"],
     },
-    "romantic": {
-        "tops": ["blouse", "sleeveless top", "top", "shirt"],
-        "bottoms": ["skirt", "long skirt"],
-        "shoes": ["heels", "sandals", "flats", "pump"],
-        "all-body": ["dress", "gown"],
-        "outerwear": ["cardigan", "blazer"],
+    "calm": {
+        "tops": ["sweater", "male sweater", "shirt", "male shirt", "blouse", "top", "male polos"],
+        "bottoms": ["pants", "male pants", "jeans", "male jeans", "long skirt"],
+        "shoes": ["flats", "closed shoes", "male loafers", "male shoes", "sneakers", "male sneakers"],
+        "all-body": ["dress", "jumpsuit", "set/suit"],
+        "outerwear": ["cardigan", "jacket", "male jacket", "blazer"],
     },
 }
 
@@ -689,7 +689,7 @@ def outfit_templates(weather: str, event: str, outerwear_required: bool = False)
     rainy = weather == "rainy"
 
     if outerwear_required:
-        if event in {"formal", "business"}:
+        if event in {"formal", "smart-casual"}:
             return [
                 ["tops", "outerwear", "bottoms", "shoes"],
                 ["all-body", "outerwear", "shoes"],
@@ -703,7 +703,7 @@ def outfit_templates(weather: str, event: str, outerwear_required: bool = False)
             ["all-body", "outerwear", "shoes"],
         ]
 
-    if event in {"formal", "business"}:
+    if event in {"formal", "smart-casual"}:
         if hot:
             return [
                 ["tops", "bottoms", "shoes"],
@@ -796,7 +796,7 @@ def heuristic_score(
     if weather == "rainy" and subcats & RAIN_SAFE_SHOE_SUBCATS:
         score += 0.08
 
-    if event in {"formal", "business"}:
+    if event in {"formal", "smart-casual"}:
         if subcats & CASUAL_SPORT_SUBCATS:
             score -= 0.30
         if subcats & SNEAKER_SUBCATS:
@@ -969,8 +969,8 @@ def launch() -> None:
         gr.Markdown("# Smart Wardrobe - Clothes Folder Demo")
         with gr.Row():
             weather = gr.Dropdown(["hot", "mild", "cold", "rainy"], value="mild", label="Weather")
-            event = gr.Dropdown(["casual", "formal", "business", "sport"], value="casual", label="Event")
-            mood = gr.Dropdown(["happy", "professional", "relaxed", "romantic"], value="happy", label="Mood")
+            event = gr.Dropdown(["casual", "smart-casual", "formal", "sport"], value="casual", label="Event")
+            mood = gr.Dropdown(["happy", "professional", "relaxed", "calm"], value="happy", label="Mood")
             gender = gr.Dropdown(["male", "female", "no preference"], value="no preference", label="Gender")
             outerwear_required = gr.Checkbox(value=False, label="Require outerwear")
         with gr.Row():

@@ -248,7 +248,11 @@ def analyze_single_item(
     else:
         subcat_id = _constrained_subcat_id(logits, main_cat=main_cat, main_to_subcat_ids=models.main_to_subcat_ids)
 
-        subcat_name = str(subcat_id)
+        # Resolve class index → name. If the mapping file is missing or the
+        # predicted index has no entry, fall back to "unknown" so the item is
+        # still recommendable (context pool treats "unknown" as last-priority,
+        # not excluded). Storing raw numeric IDs would cause permanent exclusion.
+        subcat_name = "unknown"
         if models.subcat_mapping is not None:
             mapped = models.subcat_mapping.get(str(subcat_id))
             if isinstance(mapped, str):

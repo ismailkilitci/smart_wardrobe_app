@@ -18,6 +18,8 @@ class WardrobeItem:
     bbox_json: str | None
     embedding_json: str | None
     model_confidence: float | None
+    favorite: bool
+    times_worn: int
     created_at: str
     updated_at: str
 
@@ -40,8 +42,21 @@ def init_db(db_path: Path) -> None:
               bbox_json TEXT NULL,
               embedding_json TEXT NULL,
               model_confidence REAL NULL,
+              favorite INTEGER NOT NULL DEFAULT 0,
+              times_worn INTEGER NOT NULL DEFAULT 0,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS outfit_feedback (
+              id TEXT PRIMARY KEY,
+              action TEXT NOT NULL,
+              item_ids_json TEXT NOT NULL,
+              score REAL NULL,
+              created_at TEXT NOT NULL
             )
             """
         )
@@ -51,6 +66,10 @@ def init_db(db_path: Path) -> None:
         }
         if "embedding_json" not in columns:
             conn.execute("ALTER TABLE wardrobe_items ADD COLUMN embedding_json TEXT NULL")
+        if "favorite" not in columns:
+            conn.execute("ALTER TABLE wardrobe_items ADD COLUMN favorite INTEGER NOT NULL DEFAULT 0")
+        if "times_worn" not in columns:
+            conn.execute("ALTER TABLE wardrobe_items ADD COLUMN times_worn INTEGER NOT NULL DEFAULT 0")
         conn.commit()
 
 
@@ -100,6 +119,8 @@ def get_item(db_path: Path, item_id: str) -> WardrobeItem:
         bbox_json=row["bbox_json"],
         embedding_json=row["embedding_json"],
         model_confidence=row["model_confidence"],
+        favorite=bool(row["favorite"]),
+        times_worn=int(row["times_worn"] or 0),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -122,6 +143,8 @@ def list_items(db_path: Path) -> list[WardrobeItem]:
             bbox_json=r["bbox_json"],
             embedding_json=r["embedding_json"],
             model_confidence=r["model_confidence"],
+            favorite=bool(r["favorite"]),
+            times_worn=int(r["times_worn"] or 0),
             created_at=r["created_at"],
             updated_at=r["updated_at"],
         )
@@ -139,6 +162,8 @@ def update_item(
     bbox_json: str | None = None,
     embedding_json: str | None = None,
     model_confidence: float | None = None,
+    favorite: bool | None = None,
+    times_worn: int | None = None,
 ) -> WardrobeItem:
     current = get_item(db_path, item_id)
 
@@ -150,6 +175,10 @@ def update_item(
     new_bbox = bbox_json if bbox_json is not None else current.bbox_json
     new_embedding = embedding_json if embedding_json is not None else current.embedding_json
     new_conf = model_confidence if model_confidence is not None else current.model_confidence
+    new_favorite = favorite if favorite is not None else current.favorite
+    new_times_worn = times_worn if times_worn is not None else current.times_worn
+    if new_times_worn < 0:
+        raise ValueError("times_worn cannot be negative")
 
     now = _utc_now_iso()
 
@@ -157,10 +186,21 @@ def update_item(
         conn.execute(
             """
             UPDATE wardrobe_items
-            SET main_category=?, sub_category=?, manual_override=?, bbox_json=?, embedding_json=?, model_confidence=?, updated_at=?
+            SET main_category=?, sub_category=?, manual_override=?, bbox_json=?, embedding_json=?, model_confidence=?, favorite=?, times_worn=?, updated_at=?
             WHERE id=?
             """,
-            (new_main, new_sub, 1 if new_manual else 0, new_bbox, new_embedding, new_conf, now, item_id),
+            (
+                new_main,
+                new_sub,
+                1 if new_manual else 0,
+                new_bbox,
+                new_embedding,
+                new_conf,
+                1 if new_favorite else 0,
+                int(new_times_worn),
+                now,
+                item_id,
+            ),
         )
         conn.commit()
 
@@ -171,6 +211,88 @@ def delete_item(db_path: Path, item_id: str) -> None:
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute("DELETE FROM wardrobe_items WHERE id = ?", (item_id,))
         conn.commit()
+
+
+def increment_times_worn(db_path: Path, item_ids: list[str]) -> None:
+    with sqlite3.connect(str(db_path)) as conn:
+        for item_id in item_ids:
+            conn.execute(
+                "UPDATE wardrobe_items SET times_worn = times_worn + 1, updated_at = ? WHERE id = ?",
+                (_utc_now_iso(), item_id),
+            )
+        conn.commit()
+
+
+def record_outfit_feedback(
+    db_path: Path,
+    *,
+    action: str,
+    item_ids: list[str],
+    score: float | None = None,
+) -> dict[str, Any]:
+    import uuid
+
+    if action not in {"save", "like", "dislike"}:
+        raise ValueError("action must be save, like, or dislike")
+    now = _utc_now_iso()
+    feedback_id = str(uuid.uuid4())
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.execute(
+            """
+            INSERT INTO outfit_feedback(id, action, item_ids_json, score, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (feedback_id, action, json.dumps(item_ids), score, now),
+        )
+        conn.commit()
+
+    increment_times_worn(db_path, item_ids)
+    return {
+        "id": feedback_id,
+        "action": action,
+        "item_ids": item_ids,
+        "score": score,
+        "created_at": now,
+    }
+
+
+def list_liked_outfits(db_path: Path) -> list[dict[str, Any]]:
+    with sqlite3.connect(str(db_path)) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(
+            """
+            SELECT * FROM outfit_feedback
+            WHERE action IN ('save', 'like')
+            ORDER BY created_at DESC
+            """
+        ).fetchall()
+
+    out: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            item_ids = json.loads(row["item_ids_json"])
+        except Exception:
+            item_ids = []
+        out.append(
+            {
+                "id": row["id"],
+                "action": row["action"],
+                "item_ids": item_ids,
+                "score": row["score"],
+                "created_at": row["created_at"],
+            }
+        )
+    return out
+
+
+def delete_liked_outfit(db_path: Path, feedback_id: str) -> bool:
+    with sqlite3.connect(str(db_path)) as conn:
+        cur = conn.execute(
+            "DELETE FROM outfit_feedback WHERE id = ? AND action IN ('save', 'like')",
+            (feedback_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
 
 
 def to_api_dict(item: WardrobeItem, *, base_url: str) -> dict[str, Any]:
@@ -184,6 +306,8 @@ def to_api_dict(item: WardrobeItem, *, base_url: str) -> dict[str, Any]:
         "sub_category": item.sub_category,
         "image_url": image_url,
         "manual_override": item.manual_override,
+        "favorite": item.favorite,
+        "times_worn": item.times_worn,
         "created_at": item.created_at,
         "updated_at": item.updated_at,
     }

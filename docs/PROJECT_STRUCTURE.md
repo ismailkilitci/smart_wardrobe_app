@@ -79,7 +79,7 @@ paths.model_dir -> .../backend/models
 7. Item `backend/wardrobe.db` icine category, bbox ve embedding ile kaydedilir; gorsel `backend/uploads` altina yazilir.
 8. Kombin onerisi `POST /recommendations` ile aday outfit'leri uretir.
 9. Kayitli embedding'ler ResNet50 scorer'a verilerek adaylar siralanir; embedding yoksa gorselden fallback score hesaplanir.
-10. API tek outfit dondurur; score alani UI/API'de gosterilmez.
+10. API tek outfit dondurur; score alani UI/API'de gosterilir.
 
 ## Weather API
 
