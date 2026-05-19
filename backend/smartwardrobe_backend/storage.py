@@ -8,6 +8,30 @@ from pathlib import Path
 from typing import Any
 
 
+def _is_git_lfs_pointer(path: Path) -> bool:
+    if not path.is_file():
+        return False
+    try:
+        with path.open("rb") as f:
+            head = f.read(80)
+    except Exception:
+        return False
+    return head.startswith(b"version https://git-lfs.github.com/spec/v1")
+
+
+def _move_lfs_pointer_aside(db_path: Path) -> None:
+    """If db_path is a Git LFS pointer file, rename it so SQLite can create a real DB."""
+    if not _is_git_lfs_pointer(db_path):
+        return
+    # Keep the pointer for debugging but don't block runtime.
+    candidate = db_path.with_name(f"{db_path.name}.lfs")
+    if candidate.exists():
+        candidate = db_path.with_name(
+            f"{db_path.name}.lfs.{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}"
+        )
+    db_path.rename(candidate)
+
+
 @dataclass(frozen=True)
 class WardrobeItem:
     id: str
@@ -30,6 +54,7 @@ def _utc_now_iso() -> str:
 
 def init_db(db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
+    _move_lfs_pointer_aside(db_path)
     with sqlite3.connect(str(db_path)) as conn:
         conn.execute(
             """

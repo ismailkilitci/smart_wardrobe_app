@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:image_picker/image_picker.dart';
@@ -261,8 +262,18 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: ElevatedButton.icon(
-                    onPressed:
-                        _isProcessing ? null : _pickImageFromFiles,
+                    onPressed: _isProcessing
+                        ? null
+                        : () {
+                            // On iOS/Android, open the Photos/Media gallery.
+                            // FilePicker opens the Files app on iOS, which is
+                            // not what users expect from a "Gallery" button.
+                            if (kIsWeb) {
+                              _pickImageFromFiles();
+                            } else {
+                              _pickImage(ImageSource.gallery);
+                            }
+                          },
                     icon: const Icon(Icons.folder_open_outlined, size: 18),
                     label: const Text('Gallery'),
                     style: ElevatedButton.styleFrom(

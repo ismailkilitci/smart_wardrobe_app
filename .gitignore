@@ -51,6 +51,16 @@ __pycache__/
 **/__pycache__/
 backend/tmp/
 
+# Backend local DB + runtime artifacts
+backend/wardrobe.db
+backend/wardrobe.db.lfs*
+backend/*.pid
+backend/uploads/
+backend/.venv-ml/
+
+# iOS/SwiftPM generated caches (Xcode)
+**/swiftpm/
+
 # ML model archives / generated model directories
 /backend/models/*.zip
 /backend/models/resnet_model/

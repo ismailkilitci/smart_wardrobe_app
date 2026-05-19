@@ -439,12 +439,13 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
             const SizedBox(height: 10),
 
             // Outerwear toggle
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
+            Material(
+              color: Colors.white,
+              shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.grey.shade200),
+                side: BorderSide(color: Colors.grey.shade200),
               ),
+              clipBehavior: Clip.antiAlias,
               child: SwitchListTile.adaptive(
                 contentPadding:
                     const EdgeInsets.symmetric(horizontal: 14, vertical: 2),

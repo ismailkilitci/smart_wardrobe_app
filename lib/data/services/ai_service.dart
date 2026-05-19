@@ -8,15 +8,18 @@ import '../models/wardrobe_models.dart';
 
 class AIService {
   /// Override with:
-  /// flutter run --dart-define=BACKEND_URL=http://192.168.1.100:5000
+  /// flutter run --dart-define=BACKEND_URL=http://127.0.0.1:5001
   static String get baseUrl {
     const override = String.fromEnvironment('BACKEND_URL', defaultValue: '');
     if (override.isNotEmpty) return override;
 
     if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
-      return 'http://10.0.2.2:5000';
+      return 'http://10.0.2.2:5001';
     }
-    return 'http://127.0.0.1:5000';
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
+      return 'http://127.0.0.1:5001';
+    }
+    return 'http://127.0.0.1:5001';
   }
 
   Uri _url(String path, {Map<String, String>? queryParameters}) {

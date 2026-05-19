@@ -16,15 +16,70 @@ except ImportError:
 
 from .config import Settings, get_settings
 from .model_assets import resolve_assets
-from .inference import (
-    bbox_to_json,
-    embedding_to_json,
-    extract_item_embedding,
-    load_models,
-    analyze_single_item,
-    score_outfit_embeddings,
-    score_outfit_compatibility,
-)
+
+# ML deps (torch/ultralytics) are optional for running the API.
+# This repo is often opened with a system Python that may not have
+# compatible wheels for torch yet (e.g. Python 3.14). We keep the backend
+# usable for non-ML endpoints and heuristic-only recommendations.
+_ML_IMPORT_ERROR: str | None = None
+try:
+    from .inference import (
+        bbox_to_json,
+        embedding_to_json,
+        extract_item_embedding,
+        load_models,
+        analyze_single_item,
+        score_outfit_embeddings,
+        score_outfit_compatibility,
+    )
+except Exception as _e:  # pragma: no cover
+    _ML_IMPORT_ERROR = str(_e)
+
+    from dataclasses import dataclass
+    from typing import Any
+
+    @dataclass(frozen=True)
+    class LoadedModels:  # type: ignore[no-redef]
+        yolo: Any | None
+        resnet18_subcat: Any | None
+        resnet50_compat: Any | None
+
+        subcat_mapping: dict[str, str] | None
+        subcat_to_main: dict[str, str] | None
+        main_to_subcat_ids: dict[str, list[int]] | None
+
+        errors: dict[str, str]
+        warnings: dict[str, str]
+
+    def load_models(_assets: Any) -> LoadedModels:  # type: ignore[no-redef]
+        return LoadedModels(
+            yolo=None,
+            resnet18_subcat=None,
+            resnet50_compat=None,
+            subcat_mapping=None,
+            subcat_to_main=None,
+            main_to_subcat_ids=None,
+            errors={"ml_import": _ML_IMPORT_ERROR or "ML dependencies unavailable"},
+            warnings={},
+        )
+
+    def bbox_to_json(bbox: list[float]) -> str:  # type: ignore[no-redef]
+        return json.dumps([float(x) for x in bbox])
+
+    def embedding_to_json(embedding: list[float]) -> str:  # type: ignore[no-redef]
+        return json.dumps([float(x) for x in embedding])
+
+    def analyze_single_item(*_args: Any, **_kwargs: Any) -> dict[str, Any]:  # type: ignore[no-redef]
+        raise RuntimeError(_ML_IMPORT_ERROR or "ML dependencies unavailable")
+
+    def extract_item_embedding(*_args: Any, **_kwargs: Any) -> list[float] | None:  # type: ignore[no-redef]
+        return None
+
+    def score_outfit_embeddings(*_args: Any, **_kwargs: Any) -> float | None:  # type: ignore[no-redef]
+        return None
+
+    def score_outfit_compatibility(*_args: Any, **_kwargs: Any) -> float | None:  # type: ignore[no-redef]
+        return None
 from .storage import (
     WardrobeItem,
     increment_times_worn,
@@ -64,6 +119,18 @@ def create_app() -> Flask:
 
     assets = resolve_assets(settings.model_dir)
     models = load_models(assets)
+
+    def _ml_unavailable_payload() -> tuple[dict, int]:
+        details = getattr(models, "errors", None)
+        return (
+            jsonify(
+                {
+                    "error": "ML models are not available on this backend.",
+                    "details": details or {"ml_import": _ML_IMPORT_ERROR or "unknown"},
+                }
+            ),
+            503,
+        )
 
     def _open_image(path: str) -> Image.Image:
         """Open an image file safely, with a clear error for unsupported formats."""
@@ -294,6 +361,9 @@ def create_app() -> Flask:
         if "image" not in request.files:
             return jsonify({"error": "No image provided"}), 400
 
+        if models.yolo is None:
+            return _ml_unavailable_payload()
+
         forced_main_category = request.form.get("forced_main_category")
         if forced_main_category:
             forced_main_category = forced_main_category.strip().lower()
@@ -446,6 +516,9 @@ def create_app() -> Flask:
         except KeyError:
             return jsonify({"error": "Item not found"}), 404
 
+        if models.yolo is None:
+            return _ml_unavailable_payload()
+
         try:
             forced_main_category = request.args.get("forced_main_category")
             if forced_main_category:
@@ -549,6 +622,9 @@ def create_app() -> Flask:
     def preview_recommendation():
         if "image" not in request.files:
             return jsonify({"error": "No image provided"}), 400
+
+        if models.yolo is None:
+            return _ml_unavailable_payload()
 
         forced_main_category = request.form.get("forced_main_category")
         if forced_main_category:
@@ -902,6 +978,9 @@ def create_app() -> Flask:
         # forward to /wardrobe/items analysis but do not store
         if "image" not in request.files:
             return jsonify({"error": "No image provided"}), 400
+
+        if models.yolo is None:
+            return _ml_unavailable_payload()
 
         forced_main_category = request.form.get("forced_main_category")
         if forced_main_category:

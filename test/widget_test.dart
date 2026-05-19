@@ -15,19 +15,10 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(const SmartWardrobeApp());
-    await tester.pumpAndSettle();
-
-    // Login flow (demo credentials)
-    await tester.enterText(find.byType(TextFormField).at(0), 'demo');
-    await tester.enterText(find.byType(TextFormField).at(1), '123');
-    await tester.tap(find.text('Sign In'));
-
-    // Login waits 1 second (Future.delayed)
     await tester.pump();
-    await tester.pump(const Duration(seconds: 1));
-    await tester.pumpAndSettle();
 
     expect(find.text('Recommend'), findsOneWidget);
     expect(find.text('Wardrobe'), findsOneWidget);
+    expect(find.text('Liked'), findsOneWidget);
   });
 }
