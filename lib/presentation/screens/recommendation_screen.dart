@@ -61,8 +61,7 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
             label,
             style: TextStyle(
               fontSize: 13,
-              fontWeight:
-                  isSelected ? FontWeight.w700 : FontWeight.w400,
+              fontWeight: isSelected ? FontWeight.w700 : FontWeight.w400,
               color: isSelected
                   ? const Color(0xFFE91E63)
                   : Colors.grey.shade700,
@@ -72,14 +71,10 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
           selectedColor: const Color(0xFFE91E63).withValues(alpha: 0.12),
           backgroundColor: Colors.white,
           side: BorderSide(
-            color: isSelected
-                ? const Color(0xFFE91E63)
-                : Colors.grey.shade300,
+            color: isSelected ? const Color(0xFFE91E63) : Colors.grey.shade300,
             width: isSelected ? 1.5 : 1,
           ),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-          ),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           showCheckmark: false,
           onSelected: (_) => onChanged(opt),
         );
@@ -242,10 +237,8 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OutfitResultsScreen(
-            contextParams: _contextParams,
-            initial: resp,
-          ),
+          builder: (_) =>
+              OutfitResultsScreen(contextParams: _contextParams, initial: resp),
         ),
       );
     } catch (e) {
@@ -282,10 +275,8 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
       Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) => OutfitResultsScreen(
-            contextParams: _contextParams,
-            initial: resp,
-          ),
+          builder: (_) =>
+              OutfitResultsScreen(contextParams: _contextParams, initial: resp),
         ),
       );
     } catch (e) {
@@ -447,8 +438,10 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
               ),
               clipBehavior: Clip.antiAlias,
               child: SwitchListTile.adaptive(
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 2),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 14,
+                  vertical: 2,
+                ),
                 title: const Text(
                   'Require outerwear',
                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
@@ -458,7 +451,11 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
                   style: TextStyle(fontSize: 12),
                 ),
                 value: _outerwearRequired,
-                activeThumbColor: Colors.white,
+                thumbColor: WidgetStateProperty.resolveWith(
+                  (states) => states.contains(WidgetState.selected)
+                      ? Colors.white
+                      : null,
+                ),
                 activeTrackColor: const Color(0xFFE91E63),
                 onChanged: (v) => setState(() => _outerwearRequired = v),
               ),
@@ -499,10 +496,7 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: Text(
                     'or recommend from a photo',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade500,
-                    ),
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
                   ),
                 ),
                 Expanded(child: Divider(color: Colors.grey.shade300)),
@@ -586,9 +580,7 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
                                 )
                               : const Icon(Icons.auto_awesome, size: 16),
                           label: Text(
-                            _loading
-                                ? 'Working…'
-                                : 'Recommend from this photo',
+                            _loading ? 'Working…' : 'Recommend from this photo',
                             style: const TextStyle(fontSize: 13),
                           ),
                           style: FilledButton.styleFrom(
@@ -596,8 +588,7 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
                               alpha: 0.65,
                             ),
                             foregroundColor: Colors.white,
-                            padding:
-                                const EdgeInsets.symmetric(vertical: 10),
+                            padding: const EdgeInsets.symmetric(vertical: 10),
                           ),
                         ),
                       ),

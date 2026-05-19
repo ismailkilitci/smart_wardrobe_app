@@ -1,11 +1,11 @@
 {
-    "name": "smart_wardrobe_app",
-    "short_name": "smart_wardrobe_app",
+    "name": "Smart Wardrobe",
+    "short_name": "Smart Wardrobe",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "AI-powered wardrobe and outfit recommendation app.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

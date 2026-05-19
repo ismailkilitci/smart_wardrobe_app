@@ -70,7 +70,8 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
   void _updateItemLocally(WardrobeItem updated) {
     setState(() {
       _items = [
-        for (final i in _items) if (i.id == updated.id) updated else i,
+        for (final i in _items)
+          if (i.id == updated.id) updated else i,
       ];
     });
   }
@@ -83,9 +84,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     } catch (e) {
       _updateItemLocally(item); // revert
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Favorite update failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Favorite update failed: $e')));
     }
   }
 
@@ -98,9 +99,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
     } catch (e) {
       _updateItemLocally(item); // revert
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Wear count update failed: $e')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Wear count update failed: $e')));
     }
   }
 
@@ -119,8 +120,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
           builder: (context, setDialogState) {
             final subcategories =
                 metadata?.subcategoriesFor(selectedMain) ?? const <String>[];
-            final subValue =
-                subcategories.contains(selectedSub) ? selectedSub : null;
+            final subValue = subcategories.contains(selectedSub)
+                ? selectedSub
+                : null;
             return AlertDialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(16),
@@ -135,9 +137,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                       labelText: 'Main category',
                     ),
                     items: mainCategories
-                        .map(
-                          (m) => DropdownMenuItem(value: m, child: Text(m)),
-                        )
+                        .map((m) => DropdownMenuItem(value: m, child: Text(m)))
                         .toList(),
                     onChanged: (value) {
                       if (value == null) return;
@@ -146,8 +146,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                         final nextSubs =
                             metadata?.subcategoriesFor(value) ??
                             const <String>[];
-                        selectedSub =
-                            nextSubs.isNotEmpty ? nextSubs.first : 'unknown';
+                        selectedSub = nextSubs.isNotEmpty
+                            ? nextSubs.first
+                            : 'unknown';
                       });
                     },
                   ),
@@ -197,9 +198,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       );
       _updateItemLocally(result);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Category updated.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Category updated.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -249,9 +250,9 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
       final result = await _service.reanalyzeWardrobeItem(item.id);
       _updateItemLocally(result);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Re-analysis complete.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Re-analysis complete.')));
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(
@@ -457,7 +458,11 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                       borderRadius: BorderRadius.circular(12),
                     ),
                     itemBuilder: (_) => [
-                      _popupItem(Icons.checkroom_outlined, 'Mark as worn', 'worn'),
+                      _popupItem(
+                        Icons.checkroom_outlined,
+                        'Mark as worn',
+                        'worn',
+                      ),
                       _popupItem(Icons.edit_outlined, 'Fix AI label', 'edit'),
                       _popupItem(Icons.refresh, 'Re-analyze', 'reanalyze'),
                       const PopupMenuDivider(),
@@ -528,10 +533,7 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
             child: Center(
               child: Text(
                 'No items yet',
-                style: TextStyle(
-                  fontSize: 13,
-                  color: Colors.grey.shade400,
-                ),
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade400),
               ),
             ),
           )
@@ -539,8 +541,10 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
           LayoutBuilder(
             builder: (context, constraints) {
               const gap = 10.0;
-              final columns =
-                  (constraints.maxWidth / 168).floor().clamp(1, 8).toInt();
+              final columns = (constraints.maxWidth / 168)
+                  .floor()
+                  .clamp(1, 8)
+                  .toInt();
               final cardWidth =
                   (constraints.maxWidth - gap * (columns - 1)) / columns;
 
@@ -637,7 +641,11 @@ class _WardrobeScreenState extends State<WardrobeScreen> {
                 ),
                 Switch.adaptive(
                   value: _showFavoritesOnly,
-                  activeThumbColor: Colors.white,
+                  thumbColor: WidgetStateProperty.resolveWith(
+                    (states) => states.contains(WidgetState.selected)
+                        ? Colors.white
+                        : null,
+                  ),
                   activeTrackColor: const Color(0xFFE91E63),
                   onChanged: (v) => setState(() => _showFavoritesOnly = v),
                 ),

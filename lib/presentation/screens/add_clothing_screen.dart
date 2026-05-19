@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
@@ -25,7 +23,6 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
   bool _isProcessing = false;
   String? _resultText;
   WardrobeItem? _savedItem;
-  String _forcedMainCategory = 'auto';
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -61,7 +58,16 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
       final String? path = file.path;
 
       final ext = (file.extension ?? '').toLowerCase();
-      const allowed = {'jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'heic', 'heif'};
+      const allowed = {
+        'jpg',
+        'jpeg',
+        'png',
+        'webp',
+        'gif',
+        'bmp',
+        'heic',
+        'heif',
+      };
       if (ext.isNotEmpty && !allowed.contains(ext)) {
         throw Exception('Please select an image file (jpg/png/webp/…)');
       }
@@ -100,11 +106,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
 
     try {
       await _aiService.healthCheck();
-      final item = await _aiService.uploadWardrobeItem(
-        _selectedImage!,
-        forcedMainCategory:
-            _forcedMainCategory == 'auto' ? null : _forcedMainCategory,
-      );
+      final item = await _aiService.uploadWardrobeItem(_selectedImage!);
       setState(() {
         _savedItem = item;
         _resultText = item.displayLabel == item.mainCategory
@@ -163,9 +165,7 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: hasImage
-                      ? Colors.transparent
-                      : Colors.grey.shade300,
+                  color: hasImage ? Colors.transparent : Colors.grey.shade300,
                   width: 1.5,
                 ),
                 boxShadow: [
@@ -190,11 +190,11 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                             onTap: _isProcessing
                                 ? null
                                 : () => setState(() {
-                                      _selectedImage = null;
-                                      _previewBytes = null;
-                                      _resultText = null;
-                                      _savedItem = null;
-                                    }),
+                                    _selectedImage = null;
+                                    _previewBytes = null;
+                                    _resultText = null;
+                                    _savedItem = null;
+                                  }),
                             child: Container(
                               padding: const EdgeInsets.all(5),
                               decoration: BoxDecoration(
@@ -287,46 +287,6 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
               ],
             ),
             const SizedBox(height: 20),
-
-            // ── Category override ───────────────────────────────────────────
-            Container(
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-              child: DropdownButtonFormField<String>(
-                value: _forcedMainCategory,
-                decoration: const InputDecoration(
-                  labelText: 'Category override',
-                  border: InputBorder.none,
-                  enabledBorder: InputBorder.none,
-                  filled: false,
-                ),
-                items: const [
-                  DropdownMenuItem(value: 'auto', child: Text('Auto-detect')),
-                  DropdownMenuItem(value: 'tops', child: Text('Tops')),
-                  DropdownMenuItem(value: 'bottoms', child: Text('Bottoms')),
-                  DropdownMenuItem(
-                    value: 'outerwear',
-                    child: Text('Outerwear'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'all-body',
-                    child: Text('All-body (dress/suit)'),
-                  ),
-                  DropdownMenuItem(value: 'shoes', child: Text('Shoes')),
-                ],
-                onChanged: _isProcessing
-                    ? null
-                    : (value) {
-                        if (value == null) return;
-                        setState(() => _forcedMainCategory = value);
-                      },
-              ),
-            ),
-            const SizedBox(height: 16),
 
             // ── Analyze button ──────────────────────────────────────────────
             if (hasImage && !hasSaved)
@@ -422,10 +382,11 @@ class _AddClothingScreenState extends State<AddClothingScreen> {
                         _previewBytes = null;
                         _resultText = null;
                         _savedItem = null;
-                        _forcedMainCategory = 'auto';
                       }),
-                      icon: const Icon(Icons.add_photo_alternate_outlined,
-                          size: 16),
+                      icon: const Icon(
+                        Icons.add_photo_alternate_outlined,
+                        size: 16,
+                      ),
                       label: const Text('Add another'),
                     ),
                   ),
