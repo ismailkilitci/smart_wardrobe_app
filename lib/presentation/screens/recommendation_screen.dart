@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -159,7 +160,7 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
       if (!mounted) return;
       setState(() {
         _weatherStatus = usedFallback
-            ? 'Location unavailable — using Istanbul…'
+        ? 'Location unavailable — using default location…'
             : 'Fetching weather…';
       });
 
@@ -174,7 +175,7 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
         final temp = current.temperatureC != null
             ? '${current.temperatureC!.toStringAsFixed(1)}°C'
             : '';
-        final src = usedFallback ? 'Istanbul' : 'Current location';
+        final src = usedFallback ? 'Default location' : 'Current location';
         _weatherStatus =
             '$src: ${current.weather}${temp.isNotEmpty ? " · $temp" : ""} — ${current.description}';
       });
@@ -205,6 +206,14 @@ class _RecommendationScreenState extends State<RecommendationScreen> {
         _previewImage = image;
         _previewBytes = bytes;
       });
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      final msg = source == ImageSource.camera
+          ? 'Camera unavailable or permission denied. Try Gallery.'
+          : 'Image selection failed. Please try again.';
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(msg), behavior: SnackBarBehavior.floating),
+      );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(

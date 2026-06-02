@@ -305,11 +305,20 @@ def _gender_pool(items: list[WardrobeItem], gender: str) -> list[WardrobeItem]:
     if gender == "no preference":
         return items
     if gender == "male":
-        return [item for item in items if _sub(item) in MALE_SUBCATS or _sub(item) in UNISEX_SUBCATS]
+        # Keep unknown as a last resort so partially-labelled wardrobes can
+        # still produce a result.
+        preferred = [
+            item
+            for item in items
+            if _sub(item) in MALE_SUBCATS or _sub(item) in UNISEX_SUBCATS
+        ]
+        unknowns = [item for item in items if _sub(item) == "unknown"]
+        return preferred + unknowns
     if gender == "female":
         preferred = [item for item in items if _sub(item) in FEMALE_SUBCATS or _sub(item) in UNISEX_SUBCATS]
         if preferred:
-            return preferred
+            unknowns = [item for item in items if _sub(item) == "unknown"]
+            return preferred + unknowns
         non_male = [item for item in items if _sub(item) not in MALE_SUBCATS]
         return non_male
     return items
@@ -678,7 +687,11 @@ def generate_recommendations(
         Blazer is not required here — the user may simply not own one.
         """
         _subcats = {_sub(item) for item in outfit}
-        if "unknown" in _subcats:
+        # Unknown subcategories are allowed in the relaxed fallback so we can
+        # still return something for partially-labelled wardrobes (e.g. seeded
+        # demo data or items added when ML is unavailable). We still block them
+        # in strict formal/professional contexts to avoid embarrassing results.
+        if "unknown" in _subcats and (ctx.event == "formal" or ctx.mood == "professional"):
             return False
         if ctx.event == "formal" or ctx.mood == "professional":
             # Never show sportswear or extreme casual in a formal context.

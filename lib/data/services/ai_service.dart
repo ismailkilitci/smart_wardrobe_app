@@ -384,6 +384,43 @@ class AIService {
     }
   }
 
+  Future<RecommendationsResponse> swapRecommendationItem({
+    required List<String> outfitItemIds,
+    required String swapItemId,
+    required String weather,
+    required String event,
+    required String mood,
+    required String gender,
+    required bool outerwearRequired,
+  }) async {
+    try {
+      final response = await http
+          .post(
+            _url('/recommendations/swap'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode({
+              'outfit_item_ids': outfitItemIds,
+              'swap_item_id': swapItemId,
+              'weather': weather,
+              'event': event,
+              'mood': mood,
+              'gender': gender,
+              'outerwear_required': outerwearRequired,
+            }),
+          )
+          .timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        return RecommendationsResponse.fromJson(
+          json.decode(response.body) as Map<String, dynamic>,
+        );
+      }
+      throw Exception('Server error: ${response.statusCode} ${response.body}');
+    } catch (e) {
+      throw Exception('Swap recommendation error: $e');
+    }
+  }
+
   // ── Style-based wardrobe search ("Do I own something like this?") ──────────
   //
   // Uploads a photo of an item the user is considering buying and returns the

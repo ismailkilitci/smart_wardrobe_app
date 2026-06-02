@@ -114,7 +114,57 @@ class _OutfitResultsScreenState extends State<OutfitResultsScreen> {
   }
 
 
-  void _showSwapPicker(OutfitRecommendation outfit) {
+  Future<void> _swapItemInOutfit({
+    required int outfitIndex,
+    required OutfitRecommendation outfit,
+    required String swapItemId,
+  }) async {
+    setState(() => _loading = true);
+    try {
+      final params = widget.contextParams;
+      final resp = await _service.swapRecommendationItem(
+        outfitItemIds: outfit.items.map((i) => i.id).toList(),
+        swapItemId: swapItemId,
+        weather: params.weather,
+        event: params.event,
+        mood: params.mood,
+        gender: params.gender,
+        outerwearRequired: params.outerwearRequired,
+      );
+      if (!mounted) return;
+      if (resp.outfits.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No alternative found for this item.'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      final swapped = resp.outfits.first;
+      final newOutfit = OutfitRecommendation(
+        rank: outfit.rank,
+        score: swapped.score,
+        items: swapped.items,
+      );
+
+      final outfits = List<OutfitRecommendation>.from(_resp.outfits);
+      if (outfitIndex >= 0 && outfitIndex < outfits.length) {
+        outfits[outfitIndex] = newOutfit;
+      }
+      setState(() => _resp = RecommendationsResponse(outfits: outfits));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Swap failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  void _showSwapPicker(OutfitRecommendation outfit, int outfitIndex) {
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -177,7 +227,11 @@ class _OutfitResultsScreenState extends State<OutfitResultsScreen> {
                         color: Colors.grey.shade600),
                     onTap: () {
                       Navigator.pop(ctx);
-                      _refreshRecommendations(excludeItemIds: [item.id]);
+                      _swapItemInOutfit(
+                        outfitIndex: outfitIndex,
+                        outfit: outfit,
+                        swapItemId: item.id,
+                      );
                     },
                   )),
             ],
@@ -249,7 +303,7 @@ class _OutfitResultsScreenState extends State<OutfitResultsScreen> {
     );
   }
 
-  Widget _buildOutfitCard(OutfitRecommendation outfit) {
+  Widget _buildOutfitCard(OutfitRecommendation outfit, int outfitIndex) {
     return Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -358,7 +412,7 @@ class _OutfitResultsScreenState extends State<OutfitResultsScreen> {
                 TextButton.icon(
                   onPressed: outfit.items.isEmpty
                       ? null
-                      : () => _showSwapPicker(outfit),
+                      : () => _showSwapPicker(outfit, outfitIndex),
                   icon: const Icon(Icons.swap_horiz, size: 14),
                   label: const Text(
                     'Swap item',
@@ -403,7 +457,7 @@ class _OutfitResultsScreenState extends State<OutfitResultsScreen> {
               itemCount: _resp.outfits.length,
               separatorBuilder: (_, __) => const SizedBox(height: 12),
               itemBuilder: (context, index) =>
-                  _buildOutfitCard(_resp.outfits[index]),
+                  _buildOutfitCard(_resp.outfits[index], index),
             ),
     );
   }

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from pathlib import Path
 
@@ -102,8 +103,12 @@ from .recommendation import (
     WEATHER_MAP,
     EVENT_MAP,
     MOOD_MAP,
+    MALE_SUBCATS,
+    FEMALE_SUBCATS,
+    UNISEX_SUBCATS,
     RecommendContext,
     generate_recommendations,
+    _combined_score,
 )
 from .weather import fetch_current_weather
 
@@ -135,6 +140,8 @@ def create_app() -> Flask:
     def _open_image(path: str) -> Image.Image:
         """Open an image file safely, with a clear error for unsupported formats."""
         p = Path(path)
+        if not p.exists():
+            raise FileNotFoundError(str(p))
         if p.suffix.lower() in {".heic", ".heif"}:
             try:
                 return Image.open(path).convert("RGB")
@@ -167,6 +174,80 @@ def create_app() -> Flask:
                 continue
 
     _backfill_missing_embeddings()
+
+    def _import_sample_uploads(limit: int = 30) -> int:
+        """Import repo-provided sample uploads into the wardrobe DB.
+
+        The Wardrobe UI reads items from the DB; images sitting in
+        backend/uploads won't show up unless they have DB rows.
+        """
+
+        enabled = os.getenv("IMPORT_SAMPLE_UPLOADS", "1").strip().lower() not in (
+            "0",
+            "false",
+            "no",
+        )
+        if not enabled:
+            return 0
+
+        try:
+            existing_ids = {it.id for it in list_items(settings.db_path)}
+        except Exception:
+            existing_ids = set()
+
+        if not settings.upload_dir.exists():
+            return 0
+
+        exts = {".jpg", ".jpeg", ".png"}
+        candidates = sorted(
+            [
+                p
+                for p in settings.upload_dir.iterdir()
+                if p.is_file()
+                and p.suffix.lower() in exts
+                and not p.name.lower().startswith("preview-")
+            ],
+            key=lambda p: p.name.lower(),
+        )
+        if not candidates:
+            return 0
+
+        mains = list(settings.yolo_main_categories) or [
+            "tops",
+            "bottoms",
+            "outerwear",
+            "all-body",
+            "shoes",
+        ]
+
+        imported = 0
+        for p in candidates:
+            if imported >= max(0, int(limit)):
+                break
+            item_id = p.stem
+            if item_id in existing_ids or item_id.startswith("preview-"):
+                continue
+            main = mains[imported % len(mains)]
+            try:
+                insert_item(
+                    settings.db_path,
+                    item_id=item_id,
+                    image_path=str(p),
+                    main_category=main,
+                    sub_category="unknown",
+                    bbox_json=None,
+                    embedding_json=None,
+                    model_confidence=None,
+                )
+                imported += 1
+            except Exception:
+                continue
+
+        return imported
+
+    # Make sure sample images checked into backend/uploads are visible
+    # in the mobile app's Wardrobe screen.
+    _import_sample_uploads()
 
     def _build_vector_index() -> VectorIndex | None:
         indexed: VectorIndex | None = None
@@ -558,6 +639,9 @@ def create_app() -> Flask:
             return jsonify(payload), 200
         except FileNotFoundError:
             return jsonify({"error": "Image file not found on server"}), 404
+        except RuntimeError as exc:
+            # Typically raised by _open_image for unsupported/corrupt formats.
+            return jsonify({"error": str(exc)}), 400
         except Exception as exc:
             import traceback
             traceback.print_exc()
@@ -616,6 +700,152 @@ def create_app() -> Flask:
         _mark_recommended_items_worn(outfits)
         _outfit_items_to_urls(outfits)
 
+        return jsonify({"outfits": outfits}), 200
+
+    @app.route("/recommendations/swap", methods=["POST"])
+    def swap_recommendation_item():
+        """Swap exactly one item in a given outfit while keeping all other items fixed.
+
+        Body:
+          - outfit_item_ids: list[str]
+          - swap_item_id: str
+          - weather/event/mood/gender/outerwear_required: same as /recommendations
+
+        Response shape matches /recommendations for easy client parsing.
+        """
+
+        body = request.get_json(silent=True) or {}
+        outfit_item_ids_raw = body.get("outfit_item_ids", [])
+        if not isinstance(outfit_item_ids_raw, list):
+            return jsonify({"error": "outfit_item_ids must be a list"}), 400
+        outfit_item_ids = [str(x).strip() for x in outfit_item_ids_raw if str(x).strip()]
+
+        swap_item_id = str(body.get("swap_item_id", "")).strip()
+        if not outfit_item_ids or not swap_item_id:
+            return jsonify({"outfits": []}), 200
+        if swap_item_id not in outfit_item_ids:
+            return jsonify({"error": "swap_item_id must be in outfit_item_ids"}), 400
+
+        ctx = RecommendContext(
+            weather=str(body.get("weather", "mild")).strip().lower(),
+            event=str(body.get("event", "casual")).strip().lower(),
+            mood=str(body.get("mood", "relaxed")).strip().lower(),
+            gender=str(body.get("gender", "no preference")).strip().lower(),
+            outerwear_required=bool(body.get("outerwear_required", False)),
+        )
+
+        wardrobe = list_items(settings.db_path)
+        item_by_id = {item.id: item for item in wardrobe}
+        missing = [item_id for item_id in outfit_item_ids if item_id not in item_by_id]
+        if missing:
+            return jsonify({"error": f"Unknown item ids: {missing[:5]}"}), 400
+
+        swap_item = item_by_id[swap_item_id]
+        swap_main = swap_item.main_category.strip().lower()
+
+        # Fixed items: keep everything except the swapped one.
+        fixed_ids = [item_id for item_id in outfit_item_ids if item_id != swap_item_id]
+        fixed_items = [item_by_id[item_id] for item_id in fixed_ids]
+
+        context_ids = _context_appropriate_ids(wardrobe, ctx)
+
+        def _subcat_lower(item: WardrobeItem) -> str:
+            return item.sub_category.strip().lower()
+
+        def _gender_filter(items: list[WardrobeItem], gender: str) -> list[WardrobeItem]:
+            if gender == "no preference":
+                return items
+
+            # Treat unknown subcategory as allowed in any gender filter so
+            # partially-labelled wardrobes still work.
+            unknown = [it for it in items if _subcat_lower(it) == "unknown"]
+
+            if gender == "male":
+                preferred = [
+                    it
+                    for it in items
+                    if _subcat_lower(it) in MALE_SUBCATS
+                    or _subcat_lower(it) in UNISEX_SUBCATS
+                ]
+                return preferred or unknown or items
+
+            if gender == "female":
+                preferred = [
+                    it
+                    for it in items
+                    if _subcat_lower(it) in FEMALE_SUBCATS
+                    or _subcat_lower(it) in UNISEX_SUBCATS
+                ]
+                if preferred:
+                    return preferred
+                non_male = [it for it in items if _subcat_lower(it) not in MALE_SUBCATS]
+                return non_male or unknown or items
+
+            return items
+
+        candidates_all = [
+            it
+            for it in wardrobe
+            if it.id not in outfit_item_ids
+            and it.main_category.strip().lower() == swap_main
+            and it.id in context_ids
+        ]
+        candidates = _gender_filter(candidates_all, ctx.gender)
+        if not candidates:
+            return jsonify({"outfits": []}), 200
+
+        def model_scorer(items: tuple[WardrobeItem, ...]) -> float | None:
+            embeddings: list[list[float]] = []
+            image_paths: list[str] = []
+            for item in items:
+                if item.embedding_json:
+                    try:
+                        embedding = json.loads(item.embedding_json)
+                        if isinstance(embedding, list):
+                            embeddings.append([float(x) for x in embedding])
+                    except Exception:
+                        pass
+                image_paths.append(item.image_path)
+            if len(embeddings) == len(items):
+                return score_outfit_embeddings(models=models, embeddings=embeddings)
+            return score_outfit_compatibility(models=models, image_paths=image_paths)
+
+        best_score: float | None = None
+        best_item: WardrobeItem | None = None
+        for candidate in candidates:
+            outfit_tuple = tuple(fixed_items + [candidate])
+            score = _combined_score(outfit_tuple, ctx, model_scorer)
+            if best_score is None or score > best_score:
+                best_score = score
+                best_item = candidate
+
+        if best_item is None or best_score is None:
+            return jsonify({"outfits": []}), 200
+
+        # Preserve original slot ordering.
+        replaced_ids = [best_item.id if item_id == swap_item_id else item_id for item_id in outfit_item_ids]
+        replaced_items: list[WardrobeItem] = []
+        for item_id in replaced_ids:
+            if item_id == best_item.id:
+                replaced_items.append(best_item)
+            else:
+                replaced_items.append(item_by_id[item_id])
+
+        swapped_outfit = {
+            "rank": 1,
+            "score": round(float(best_score), 4),
+            "items": [
+                {
+                    "id": it.id,
+                    "main_category": it.main_category,
+                    "sub_category": it.sub_category,
+                    "image_path": it.image_path,
+                }
+                for it in replaced_items
+            ],
+        }
+        outfits = [swapped_outfit]
+        _outfit_items_to_urls(outfits)
         return jsonify({"outfits": outfits}), 200
 
     @app.route("/recommendations/preview", methods=["POST"])
